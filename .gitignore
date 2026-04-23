@@ -1,6 +1,7 @@
 ## Lead Management Backend Git Ignore
 .env
-target/
+target/*
+!target/*.jar
 .idea/
 *.iml
 .settings/

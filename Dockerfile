@@ -1,15 +1,14 @@
-# Step 1: Build stage
-FROM maven:3.8.5-eclipse-temurin-17 AS build
-WORKDIR /app
-COPY pom.xml .
-COPY src ./src
-# Limit Maven memory to fit Render Free (512MB)
-ENV MAVEN_OPTS="-Xmx256m"
-RUN mvn package -DskipTests
+# Use a lightweight JRE image for runtime
+FROM eclipse-temurin:17-jre-jammy
 
-# Step 2: Runtime stage
-FROM eclipse-temurin:17-jdk
+# Set the working directory
 WORKDIR /app
-COPY --from=build /app/target/*.jar app.jar
+
+# Copy the pre-built JAR from the local target folder
+COPY target/lead-management-0.0.1-SNAPSHOT.jar app.jar
+
+# Expose the port
 EXPOSE 8081
+
+# Run the application
 ENTRYPOINT ["java", "-jar", "app.jar"]
