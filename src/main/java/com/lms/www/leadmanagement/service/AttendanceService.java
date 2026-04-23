@@ -585,14 +585,17 @@ public class AttendanceService {
                 .orElseThrow(() -> new ResourceNotFoundException("Requester not found"));
         String role = requester.getRole().getName();
 
-        List<User> visibleUsers;
+        List<User> visibleUsers = new ArrayList<>();
         if ("ADMIN".equals(role)) {
             if (targetUserId != null) {
                 User target = userRepository.findById(targetUserId)
                         .orElseThrow(() -> new ResourceNotFoundException("Target user not found"));
                 visibleUsers = List.of(target);
             } else {
-                visibleUsers = null; // Admin sees all
+                // Admin sees all eligible staff
+                visibleUsers = userRepository.findAll().stream()
+                        .filter(u -> !"ADMIN".equals(u.getRole().getName()))
+                        .collect(Collectors.toList());
             }
         } else {
             // Manager/TL hierarchy restriction
@@ -613,45 +616,60 @@ public class AttendanceService {
             }
         }
 
-        List<AttendanceDaily> logs;
-        if (visibleUsers != null) {
-            if (startDate != null && endDate != null) {
-                logs = attendanceDailyRepository.findAllByUserInAndDateBetween(visibleUsers, startDate, endDate);
-            } else if (startDate != null) {
-                logs = attendanceDailyRepository.findAllByUserInAndDate(visibleUsers, startDate);
-            } else {
-                logs = attendanceDailyRepository.findAllByUserInOrderByDateDesc(visibleUsers);
-            }
-        } else {
-            // Global (Admin only)
-            if (startDate != null && endDate != null) {
-                logs = attendanceDailyRepository.findByDateBetween(startDate, endDate);
-            } else if (startDate != null) {
-                logs = attendanceDailyRepository.findByDate(startDate);
-            } else {
-                logs = attendanceDailyRepository.findAll();
-            }
-        }
+        // If no date provided, default to today
+        if (startDate == null) startDate = todayInIndia();
+        if (endDate == null) endDate = startDate;
 
-        return logs.stream().map(log -> {
-            AttendanceStatus parsedStatus = AttendanceStatus.PUNCHED_OUT;
-            if (log.getStatus() != null) {
-                try {
-                    parsedStatus = AttendanceStatus.valueOf(log.getStatus());
-                } catch (IllegalArgumentException e) {
-                    parsedStatus = AttendanceStatus.PUNCHED_OUT;
+        List<AttendanceDTO> results = new ArrayList<>();
+
+        for (User user : visibleUsers) {
+            // For each day in range
+            for (LocalDate date = startDate; !date.isAfter(endDate); date = date.plusDays(1)) {
+                // Priority 1: Check for active session today
+                Optional<AttendanceSession> activeSession = attendanceSessionRepository.findSessionsForDate(
+                    user.getId(), 
+                    date.atStartOfDay(), 
+                    date.atTime(23, 59, 59)
+                ).stream().findFirst();
+
+                if (activeSession.isPresent()) {
+                    results.add(convertToDTO(activeSession.get(), date));
+                } else {
+                    // Priority 2: Check for historic daily record
+                    Optional<AttendanceDaily> daily = attendanceDailyRepository.findByUserIdAndDate(user.getId(), date);
+                    if (daily.isPresent()) {
+                        AttendanceDaily log = daily.get();
+                        AttendanceStatus parsedStatus = AttendanceStatus.PUNCHED_OUT;
+                        if (log.getStatus() != null) {
+                            try { parsedStatus = AttendanceStatus.valueOf(log.getStatus()); }
+                            catch (Exception e) { parsedStatus = AttendanceStatus.PUNCHED_OUT; }
+                        }
+                        AttendanceSession dummy = AttendanceSession.builder()
+                                .user(user)
+                                .checkInTime(log.getDate().atStartOfDay())
+                                .status(parsedStatus)
+                                .totalWorkMinutes(log.getTotalWorkMinutes())
+                                .totalBreakMinutes(log.getTotalBreakMinutes())
+                                .outsideCount(log.getOutsideCount())
+                                .build();
+                        results.add(convertToDTO(dummy, date));
+                    } else {
+                        // Priority 3: No record found? Show as ABSENT (only for past/current days)
+                        if (!date.isAfter(todayInIndia())) {
+                            AttendanceSession dummy = AttendanceSession.builder()
+                                    .user(user)
+                                    .status(AttendanceStatus.OUT)
+                                    .totalWorkMinutes(0)
+                                    .build();
+                            AttendanceDTO dto = convertToDTO(dummy, date);
+                            dto.setStatus("ABSENT");
+                            results.add(dto);
+                        }
+                    }
                 }
             }
-            AttendanceSession dummy = AttendanceSession.builder()
-                    .user(log.getUser())
-                    .checkInTime(log.getDate().atStartOfDay())
-                    .status(parsedStatus)
-                    .totalWorkMinutes(log.getTotalWorkMinutes())
-                    .totalBreakMinutes(log.getTotalBreakMinutes())
-                    .outsideCount(log.getOutsideCount())
-                    .build();
-            return convertToDTO(dummy, log.getDate());
-        }).collect(Collectors.toList());
+        }
+        return results;
     }
 
     private void collectSubordinates(User user, List<User> collector) {

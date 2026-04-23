@@ -1,7 +1,8 @@
 target/
-uploads/
+.mvn/
+mvnw
+mvnw.cmd
+.git/
+.idea/
+.vscode/
 *.log
-*.env
-.git
-.gitignore
-.mvn/repository

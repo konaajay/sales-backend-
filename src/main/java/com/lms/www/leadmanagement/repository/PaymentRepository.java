@@ -48,12 +48,12 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             @Param("start") java.time.LocalDateTime start,
             @Param("end") java.time.LocalDateTime end);
 
-    @Query("SELECT new map(l.assignedTo.id as userId, sum(p.amount) as amount) " +
+    @Query("SELECT new map(l.assignedTo.id as userId, sum(p.amount) as amount, count(distinct l.id) as successCount) " +
             "FROM Payment p JOIN Lead l ON p.leadId = l.id " +
             "WHERE (p.status = com.lms.www.leadmanagement.entity.Payment$Status.PAID " +
             "OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.APPROVED " +
             "OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.SUCCESS) " +
-            "AND l.assignedTo.id IN :userIds " +
+            "AND (:userIds IS NULL OR l.assignedTo.id IN :userIds) " +
             "AND (:start IS NULL OR COALESCE(p.dueDate, p.createdAt) >= :start) " +
             "AND (:end IS NULL OR COALESCE(p.dueDate, p.createdAt) <= :end) " +
             "GROUP BY l.assignedTo.id")

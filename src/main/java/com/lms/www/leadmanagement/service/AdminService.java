@@ -726,6 +726,9 @@ public class AdminService {
         Map<Long, BigDecimal> revenueMap = revenueData.stream()
                 .collect(Collectors.toMap(m -> (Long) m.get("userId"),
                         m -> m.get("amount") != null ? (BigDecimal) m.get("amount") : BigDecimal.ZERO));
+        Map<Long, Long> successMap = revenueData.stream()
+                .collect(Collectors.toMap(m -> (Long) m.get("userId"),
+                        m -> m.get("successCount") != null ? (Long) m.get("successCount") : 0L));
         Map<Long, BigDecimal> pendingMap = pendingData.stream()
                 .collect(Collectors.toMap(m -> (Long) m.get("userId"),
                         m -> m.get("amount") != null ? (BigDecimal) m.get("amount") : BigDecimal.ZERO));
@@ -740,9 +743,13 @@ public class AdminService {
                     Long userId = (Long) uStats.get("userId");
 
                     BigDecimal revenue = revenueMap.getOrDefault(userId, BigDecimal.ZERO);
+                    Long successCount = successMap.getOrDefault(userId, 0L);
                     BigDecimal pending = pendingMap.getOrDefault(userId, BigDecimal.ZERO);
                     BigDecimal target = targetMap.getOrDefault(userId, BigDecimal.ZERO);
+
                     uStats.put("revenueGenerated", revenue);
+                    // Override lead-creation-based conversion count with event-based conversion count
+                    uStats.put("convertedLeads", successCount);
                     uStats.put("pendingReceivables", pending);
                     uStats.put("monthlyTarget", target);
 

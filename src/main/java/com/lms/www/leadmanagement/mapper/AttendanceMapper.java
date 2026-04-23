@@ -38,6 +38,7 @@ public class AttendanceMapper {
                 .lastLat(s.getLastLat())
                 .lastLng(s.getLastLng())
                 .lastLocationTime(s.getLastLocationTime())
+                .lastSeenTime(s.getLastSeenTime())
                 .trackingIntervalSec(trackingInterval)
                 .shortBreakStartTime(sBreakStart)
                 .shortBreakEndTime(sBreakEnd)

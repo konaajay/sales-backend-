@@ -23,6 +23,7 @@ public class AttendanceDTO {
     private Double lastLat;
     private Double lastLng;
     private LocalDateTime lastLocationTime;
+    private LocalDateTime lastSeenTime;
 
     // Policy-driven fields for Frontend
     private Integer trackingIntervalSec;

@@ -106,25 +106,27 @@ public class ReportService {
 
         Map<String, Long> stats;
         double totalRevenue = 0;
+        long convertedCount = 0;
+
         if (allowedUsers != null) {
             stats = allowedUsers.isEmpty() ? new HashMap<>() : leadRepository.getSummaryStats(allowedUsers, start, end);
             List<Long> ids = allowedUsers.stream().map(User::getId).collect(Collectors.toList());
             if (!ids.isEmpty()) {
-                totalRevenue = paymentRepository.findFilteredByUserIds(ids, start, end).stream()
-                        .filter(p -> p.getAmount() != null)
-                        .filter(p -> p.getStatus() == com.lms.www.leadmanagement.entity.Payment.Status.PAID || 
-                                     p.getStatus() == com.lms.www.leadmanagement.entity.Payment.Status.APPROVED)
-                        .mapToDouble(p -> p.getAmount().doubleValue())
-                        .sum();
+                List<Map<String, Object>> revData = paymentRepository.getRevenuePerUser(ids, start, end);
+                for (Map<String, Object> map : revData) {
+                    totalRevenue += map.get("amount") != null ? ((Number) map.get("amount")).doubleValue() : 0.0;
+                    convertedCount += map.get("successCount") != null ? ((Number) map.get("successCount")).longValue() : 0L;
+                }
             }
         } else {
             stats = leadRepository.getGlobalSummaryStats(start, end);
-            totalRevenue = paymentRepository.findByCreatedAtBetween(start, end).stream()
-                    .filter(p -> p.getAmount() != null)
-                    .filter(p -> p.getStatus() == com.lms.www.leadmanagement.entity.Payment.Status.PAID || 
-                                 p.getStatus() == com.lms.www.leadmanagement.entity.Payment.Status.APPROVED)
-                    .mapToDouble(p -> p.getAmount().doubleValue())
-                    .sum();
+            totalRevenue = paymentRepository.getGlobalTotalRevenue(start, end).doubleValue();
+            
+            // For global converted count, sum across all successful payments in period
+            List<Map<String, Object>> globalRev = paymentRepository.getRevenuePerUser(null, start, end);
+             for (Map<String, Object> map : globalRev) {
+                convertedCount += map.get("successCount") != null ? ((Number) map.get("successCount")).longValue() : 0L;
+            }
         }
 
         return LeadStatsDTO.builder()
@@ -133,7 +135,7 @@ public class ReportService {
                 .interestedCount(asLong(stats.get("interestedCount")))
                 .contactedCount(asLong(stats.get("contactedCount")))
                 .followUpCount(asLong(stats.get("followUpCount")))
-                .convertedCount(asLong(stats.get("convertedCount")))
+                .convertedCount(convertedCount)
                 .lostCount(asLong(stats.get("lostCount")))
                 .totalRevenue(totalRevenue)
                 .build();
