@@ -1,0 +1,7 @@
+target/
+uploads/
+*.log
+*.env
+.git
+.gitignore
+.mvn/repository

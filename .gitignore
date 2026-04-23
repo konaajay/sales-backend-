@@ -1,0 +1,11 @@
+## Lead Management Backend Git Ignore
+.env
+target/
+.idea/
+*.iml
+.settings/
+.project
+.classpath
+.factorypath
+bin/
+logs/
