@@ -8,12 +8,13 @@ import com.lms.www.leadmanagement.entity.AttendancePolicy;
 import com.lms.www.leadmanagement.entity.AttendanceShift;
 import com.lms.www.leadmanagement.entity.GlobalTarget;
 import com.lms.www.leadmanagement.entity.OfficeLocation;
+import com.lms.www.leadmanagement.service.AttendancePolicyService;
 import com.lms.www.leadmanagement.service.AttendanceService;
+import com.lms.www.leadmanagement.service.SecurityService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
@@ -26,95 +27,90 @@ import java.util.List;
 public class AdminAttendanceController {
 
     private final AttendanceService attendanceService;
+    private final AttendancePolicyService attendancePolicyService;
+    private final SecurityService securityService;
 
     @GetMapping("/summaries")
     public ResponseEntity<ApiResponse<List<AttendanceDTO>>> getSummaries(
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) Long userId) {
-        return ResponseEntity.ok(ApiResponse.success(attendanceService.getDailySummaries(startDate, endDate, userId, getCurrentUserId())));
-    }
-
-    private Long getCurrentUserId() {
-        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
-        if (principal instanceof com.lms.www.leadmanagement.security.UserDetailsImpl ud) {
-            return ud.getId();
-        }
-        throw new RuntimeException("Unauthorized: Missing principal node");
+        Long requesterId = securityService.getCurrentUser().getId();
+        return ResponseEntity.ok(ApiResponse.success(attendanceService.getDailySummaries(startDate, endDate, userId, requesterId)));
     }
 
     // Office/Branch Management
     @GetMapping("/offices")
     public ResponseEntity<ApiResponse<List<OfficeLocationDTO>>> getOffices() {
-        return ResponseEntity.ok(ApiResponse.success(attendanceService.getAllOffices()));
+        return ResponseEntity.ok(ApiResponse.success(attendancePolicyService.getAllOffices()));
     }
 
     @PostMapping("/offices")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<OfficeLocation>> createOffice(@RequestBody OfficeLocation office) {
-        return ResponseEntity.ok(ApiResponse.success(attendanceService.createOffice(office)));
+        return ResponseEntity.ok(ApiResponse.success(attendancePolicyService.createOffice(office)));
     }
 
     @PutMapping("/offices/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<OfficeLocation>> updateOffice(@PathVariable Long id, @RequestBody OfficeLocation office) {
-        return ResponseEntity.ok(ApiResponse.success(attendanceService.updateOffice(id, office)));
+        return ResponseEntity.ok(ApiResponse.success(attendancePolicyService.updateOffice(id, office)));
     }
 
     @DeleteMapping("/offices/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Void>> deleteOffice(@PathVariable Long id) {
-        attendanceService.deleteOffice(id);
+        attendancePolicyService.deleteOffice(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     // Policy Management
     @GetMapping("/policies")
     public ResponseEntity<ApiResponse<List<AttendancePolicyDTO>>> getPolicies() {
-        return ResponseEntity.ok(ApiResponse.success(attendanceService.getAllPolicies()));
+        return ResponseEntity.ok(ApiResponse.success(attendancePolicyService.getAllPolicies()));
     }
 
     @PostMapping("/policies")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<AttendancePolicy>> createPolicy(@RequestBody AttendancePolicyDTO dto) {
-        return ResponseEntity.ok(ApiResponse.success(attendanceService.createPolicy(dto)));
+        return ResponseEntity.ok(ApiResponse.success(attendancePolicyService.createPolicy(dto)));
     }
 
     @PutMapping("/policies/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<AttendancePolicy>> updatePolicy(@PathVariable Long id, @RequestBody AttendancePolicyDTO dto) {
-        return ResponseEntity.ok(ApiResponse.success(attendanceService.updatePolicy(id, dto)));
+        return ResponseEntity.ok(ApiResponse.success(attendancePolicyService.updatePolicy(id, dto)));
     }
 
     @DeleteMapping("/policies/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Void>> deletePolicy(@PathVariable Long id) {
-        attendanceService.deletePolicy(id);
+        attendancePolicyService.deletePolicy(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     // Shift Management
     @GetMapping("/shifts")
     public ResponseEntity<ApiResponse<List<AttendanceShift>>> getShifts() {
-        return ResponseEntity.ok(ApiResponse.success(attendanceService.getAllShifts()));
+        return ResponseEntity.ok(ApiResponse.success(attendancePolicyService.getAllShifts()));
     }
 
     @PostMapping("/shifts")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<AttendanceShift>> createShift(@RequestBody AttendanceShift shift) {
-        return ResponseEntity.ok(ApiResponse.success(attendanceService.createShift(shift)));
+        return ResponseEntity.ok(ApiResponse.success(attendancePolicyService.createShift(shift)));
     }
 
     @PutMapping("/shifts/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<AttendanceShift>> updateShift(@PathVariable Long id, @RequestBody AttendanceShift shift) {
-        return ResponseEntity.ok(ApiResponse.success(attendanceService.updateShift(id, shift)));
+        return ResponseEntity.ok(ApiResponse.success(attendancePolicyService.updateShift(id, shift)));
     }
 
     @DeleteMapping("/shifts/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Void>> deleteShift(@PathVariable Long id) {
-        attendanceService.deleteShift(id);
+        attendancePolicyService.deleteShift(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 

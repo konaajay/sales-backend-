@@ -32,7 +32,6 @@ public class DashboardStatsController {
 
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'TEAM_LEADER', 'ASSOCIATE')")
     @GetMapping("/summary")
-    @Cacheable(value = "dashboardSummary", key = "{#userDetails.id, #from, #to, #userId, #teamId}")
     public ResponseEntity<DashboardSummaryDTO> getUnifiedSummary(
             @AuthenticationPrincipal UserDetailsImpl userDetails,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,

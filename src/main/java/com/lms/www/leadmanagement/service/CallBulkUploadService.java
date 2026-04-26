@@ -89,7 +89,8 @@ public class CallBulkUploadService {
                         }
 
                         // Try to find lead by mobile
-                        Lead lead = leadRepository.findByMobile(mobile).orElse(null);
+                        List<Lead> leads = leadRepository.findByMobile(mobile);
+                        Lead lead = (leads != null && !leads.isEmpty()) ? leads.get(0) : null;
 
                         CallRecord record = CallRecord.builder()
                                 .user(currentUser)

@@ -19,7 +19,7 @@ public class LeadDTO {
     private String email;
     private String mobile;
     private String college;
-    private String serialNumber;
+
     private String status;
     private Long assignedToId;
     private String assignedToName;
@@ -42,6 +42,8 @@ public class LeadDTO {
     private LocalDateTime updatedAt;
     private Long updatedById;
     private String updatedByName;
+    private Long createdById;
+    private String createdByName;
     private java.util.List<LeadNoteDTO> notes;
 
     public static LeadDTO fromEntity(Lead lead) {
@@ -52,8 +54,8 @@ public class LeadDTO {
                 .email(lead.getEmail())
                 .mobile(lead.getMobile())
                 .college(lead.getCollege())
-                .serialNumber(lead.getSerialNumber())
-                .status(lead.getStatus() != null ? lead.getStatus().name() : "NEW")
+
+                .status(lead.getStatus() != null ? lead.getStatus() : "NEW")
                 .assignedToId(lead.getAssignedTo() != null ? lead.getAssignedTo().getId() : null)
                 .assignedToName(lead.getAssignedTo() != null ? lead.getAssignedTo().getName() : null)
                 .paymentLink(lead.getPaymentLink())
@@ -69,6 +71,8 @@ public class LeadDTO {
                 .updatedAt(lead.getUpdatedAt())
                 .updatedById(lead.getUpdatedBy() != null ? lead.getUpdatedBy().getId() : null)
                 .updatedByName(lead.getUpdatedBy() != null ? lead.getUpdatedBy().getName() : null)
+                .createdById(lead.getCreatedBy() != null ? lead.getCreatedBy().getId() : null)
+                .createdByName(lead.getCreatedBy() != null ? lead.getCreatedBy().getName() : null)
                 .notes(lead.getNotes() != null ? 
                     lead.getNotes().stream().map(LeadNoteDTO::fromEntity).collect(java.util.stream.Collectors.toList()) : 
                     new java.util.ArrayList<>())

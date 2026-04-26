@@ -20,6 +20,14 @@ public class LeadTask {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lead_id")
     private Lead lead;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_to_id")
+    private User assignedTo;
+    
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "created_by_id")
+    private User createdBy;
 
     private String title;
     private String description;
@@ -49,6 +57,6 @@ public class LeadTask {
     }
 
     public enum TaskStatus {
-        PENDING, COMPLETED, CANCELLED, RESCHEDULED
+        PENDING, COMPLETED, CANCELLED, RESCHEDULED, OVERDUE
     }
 }

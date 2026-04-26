@@ -37,7 +37,7 @@ public class MailService {
             mailSender.send(message);
             System.out.println(">>> SUCCESSFULLY SENT EMAIL TO: " + to);
             log.info("Email sent successfully to {}", to);
-        } catch (MessagingException e) {
+        } catch (Exception e) {
             System.err.println(">>> ERROR: FAILED TO SEND EMAIL TO: " + to);
             System.err.println(">>> REASON: " + e.getMessage());
             log.error("Failed to send email to {}", to, e);

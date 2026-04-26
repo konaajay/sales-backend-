@@ -200,6 +200,6 @@ public class TeamLeaderController {
             @RequestParam(value = "end", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime end) {
         com.lms.www.leadmanagement.entity.User tl = userRepository.findByEmail(userDetails.getUsername())
                 .orElseThrow(() -> new RuntimeException("User not found"));
-        return ResponseEntity.ok(adminService.getMemberPerformanceFiltered(start, end, tl, userId));
+        return ResponseEntity.ok(adminService.getMemberPerformanceFiltered(start, end, tl, userId, null));
     }
 }

@@ -30,11 +30,11 @@ public class Lead {
     private String mobile;
 
     private String college;
-    private String serialNumber;
 
-    @Enumerated(EnumType.STRING)
-    @Column(columnDefinition = "VARCHAR(30)")
-    private Status status;
+
+    @Builder.Default
+    @Column(name = "status")
+    private String status = "NEW";
 
     private String note;
 
@@ -74,16 +74,12 @@ public class Lead {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
         if (status == null) {
-            status = Status.NEW;
+            status = "NEW";
         }
     }
 
     @PreUpdate
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
-    }
-
-    public enum Status {
-        NEW, CONTACTED, INTERESTED, UNDER_REVIEW, CONVERTED, LOST, NOT_INTERESTED, PAID, PAYMENT_FAILED, FOLLOW_UP, EMI, CLOSED, RETRY, WORKING, PENDING_MESSAGES, SUCCESS
     }
 }

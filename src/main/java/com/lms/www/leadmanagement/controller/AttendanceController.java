@@ -24,16 +24,24 @@ public class AttendanceController {
     private AttendanceService attendanceService;
 
     private Long getCurrentUserId() {
-        Object principal = SecurityContextHolder.getContext().getAuthentication().getPrincipal();
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getPrincipal())) {
+            System.err.println(">>> ATTENDANCE ERROR: Not authenticated");
+            return null; // Let the caller handle or return 401
+        }
+        Object principal = auth.getPrincipal();
         if (!(principal instanceof UserDetailsImpl)) {
-            throw new RuntimeException("Invalid authentication context");
+            System.err.println(">>> ATTENDANCE ERROR: Principal is not UserDetailsImpl: " + (principal != null ? principal.getClass().getName() : "null"));
+            return null;
         }
         return ((UserDetailsImpl) principal).getId();
     }
 
     @PostMapping("/clock-in")
     public ResponseEntity<ApiResponse<AttendanceDTO>> clockIn(@Valid @RequestBody LocationRequestDTO request, HttpServletRequest httpRequest) {
-        request.setUserId(getCurrentUserId());
+        Long userId = getCurrentUserId();
+        if (userId == null) return ResponseEntity.status(401).body(ApiResponse.error("AUTHENTICATION_REQUIRED: Please login again"));
+        request.setUserId(userId);
         String ua = httpRequest.getHeader("User-Agent");
         String ip = httpRequest.getRemoteAddr();
         return ResponseEntity.ok(ApiResponse.success(attendanceService.clockIn(request, ua, ip)));
@@ -41,7 +49,9 @@ public class AttendanceController {
 
     @PostMapping("/track")
     public ResponseEntity<ApiResponse<AttendanceDTO>> trackLocation(@Valid @RequestBody LocationRequestDTO request, HttpServletRequest httpRequest) {
-        request.setUserId(getCurrentUserId());
+        Long userId = getCurrentUserId();
+        if (userId == null) return ResponseEntity.status(401).body(ApiResponse.error("AUTHENTICATION_REQUIRED: Session expired"));
+        request.setUserId(userId);
         String ua = httpRequest.getHeader("User-Agent");
         String ip = httpRequest.getRemoteAddr();
         return ResponseEntity.ok(ApiResponse.success(attendanceService.trackLocation(request, ua, ip)));
@@ -49,22 +59,30 @@ public class AttendanceController {
 
     @PutMapping("/clock-out")
     public ResponseEntity<ApiResponse<AttendanceDTO>> clockOut() {
-        return ResponseEntity.ok(ApiResponse.success(attendanceService.clockOut(getCurrentUserId())));
+        Long userId = getCurrentUserId();
+        if (userId == null) return ResponseEntity.status(401).build();
+        return ResponseEntity.ok(ApiResponse.success(attendanceService.clockOut(userId)));
     }
 
     @PostMapping("/break/start")
     public ResponseEntity<ApiResponse<AttendanceDTO>> startBreak(@RequestParam(defaultValue = "SHORT") String type) {
-        return ResponseEntity.ok(ApiResponse.success(attendanceService.startBreak(getCurrentUserId(), type)));
+        Long userId = getCurrentUserId();
+        if (userId == null) return ResponseEntity.status(401).build();
+        return ResponseEntity.ok(ApiResponse.success(attendanceService.startBreak(userId, type)));
     }
 
     @PostMapping("/break/end")
     public ResponseEntity<ApiResponse<AttendanceDTO>> endBreak() {
-        return ResponseEntity.ok(ApiResponse.success(attendanceService.endBreak(getCurrentUserId())));
+        Long userId = getCurrentUserId();
+        if (userId == null) return ResponseEntity.status(401).build();
+        return ResponseEntity.ok(ApiResponse.success(attendanceService.endBreak(userId)));
     }
 
     @GetMapping("/status")
     public ResponseEntity<ApiResponse<?>> getStatus() {
-        Optional<AttendanceDTO> attendanceOpt = attendanceService.getCurrentStatus(getCurrentUserId());
+        Long userId = getCurrentUserId();
+        if (userId == null) return ResponseEntity.status(401).build();
+        Optional<AttendanceDTO> attendanceOpt = attendanceService.getCurrentStatus(userId);
         if (attendanceOpt.isPresent()) {
             return ResponseEntity.ok(ApiResponse.success(attendanceOpt.get()));
         } else {
@@ -79,6 +97,8 @@ public class AttendanceController {
 
     @GetMapping("/my-logs")
     public ResponseEntity<ApiResponse<List<AttendanceDTO>>> getMyLogs() {
-        return ResponseEntity.ok(ApiResponse.success(attendanceService.getMyLogs(getCurrentUserId())));
+        Long userId = getCurrentUserId();
+        if (userId == null) return ResponseEntity.status(401).build();
+        return ResponseEntity.ok(ApiResponse.success(attendanceService.getMyLogs(userId)));
     }
 }

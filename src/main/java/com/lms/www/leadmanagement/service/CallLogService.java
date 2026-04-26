@@ -90,7 +90,7 @@ public class CallLogService {
             // 4. Sync Lead State if associated
             if (lead != null && status != null && !status.isEmpty()) {
                 try {
-                    lead.setStatus(Lead.Status.valueOf(status.toUpperCase()));
+                    lead.setStatus(status.toUpperCase());
                     lead.setNote(note);
                     lead.setUpdatedBy(user);
                     leadRepository.save(lead);

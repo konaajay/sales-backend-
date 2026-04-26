@@ -18,6 +18,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findBySupervisor(User supervisor);
     List<User> findByManager(User manager);
 
+    @Query("SELECT u FROM User u WHERE (u.manager IS NULL AND u.supervisor IS NULL) OR u.role.name = 'ADMIN'")
+    List<User> findHierarchyRoots();
+
     // Fetch full hierarchy of subordinates using a Recursive CTE (MySQL 8.0+)
     // Includes cycle detection and depth limit to prevent infinite recursion
     @Query(value = "WITH RECURSIVE Subordinates AS (" +
@@ -32,4 +35,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<Long> findSubordinateIds(@Param("managerId") Long managerId);
 
     org.springframework.data.domain.Page<User> findByIdIn(java.util.Collection<Long> ids, org.springframework.data.domain.Pageable pageable);
+
+    @Query("SELECT COUNT(u) FROM User u WHERE u.active = true AND (u.joiningDate IS NULL OR u.joiningDate <= :date)")
+    long countActiveUsersByDate(@Param("date") java.time.LocalDate date);
+
+    @Query("SELECT COUNT(u) FROM User u WHERE u.id IN :userIds AND u.active = true AND (u.joiningDate IS NULL OR u.joiningDate <= :date)")
+    long countActiveUsersByDateIn(@Param("userIds") java.util.Collection<Long> userIds, @Param("date") java.time.LocalDate date);
 }

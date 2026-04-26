@@ -70,7 +70,7 @@ public class LeadBulkUploadService {
                 String[] data = line.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)");
 
                 if (data.length >= 2) {
-                    String serialNumber = "";
+
                     String name = "";
                     String email = "";
                     String mobile = "";
@@ -89,7 +89,6 @@ public class LeadBulkUploadService {
                         mobile = data[2].trim().replace("\"", "");
                         college = data[3].trim().replace("\"", "");
                     } else if (data.length >= 5) {
-                        serialNumber = data[0].trim().replace("\"", "");
                         name = data[1].trim().replace("\"", "");
                         email = data[2].trim().replace("\"", "");
                         mobile = data[3].trim().replace("\"", "");
@@ -115,7 +114,8 @@ public class LeadBulkUploadService {
                         finalAssignee = assignees.get(assigneeIndex % assignees.size());
                         assigneeIndex++;
                     } else {
-                        finalAssignee = null;
+                        // FORCE AUTO-ASSIGNMENT: Assign to self if no other assignees are specified
+                        finalAssignee = creator;
                     }
 
                     // Duplicate Check
@@ -137,8 +137,8 @@ public class LeadBulkUploadService {
                             .email(email.isEmpty() ? null : email)
                             .mobile(mobile)
                             .college(college.isEmpty() ? null : college)
-                            .serialNumber(serialNumber.isEmpty() ? null : serialNumber)
-                            .status(Lead.Status.NEW)
+
+                            .status("WORKING")
                             .createdBy(creator)
                             .assignedTo(finalAssignee)
                             .build();

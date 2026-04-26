@@ -67,13 +67,11 @@ public class LeadController {
     }
 
     @PutMapping("/{id}/status")
-
     @PreAuthorize("hasAuthority('UPDATE_LEAD_STATUS')")
     public ResponseEntity<LeadDTO> updateStatus(
             @PathVariable Long id,
-            @RequestParam String status,
-            @RequestParam(required = false) String note) {
-        return ResponseEntity.ok(leadService.updateStatus(id, status, note));
+            @RequestBody com.lms.www.leadmanagement.dto.StatusUpdateRequest request) {
+        return ResponseEntity.ok(leadService.updateStatus(id, request));
     }
 
     @PostMapping("/{id}/reject")

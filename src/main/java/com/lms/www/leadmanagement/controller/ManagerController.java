@@ -15,6 +15,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -41,6 +42,9 @@ public class ManagerController {
 
     @Autowired
     private AttendanceService attendanceService;
+
+    @Autowired
+    private DashboardStatsService statsService;
 
     @PreAuthorize("hasAuthority('MANAGE_USERS')")
     @PostMapping("/team-leader")
@@ -145,14 +149,19 @@ public class ManagerController {
         return ResponseEntity.ok(leadPaymentService.updatePaymentStatus(id, payload));
     }
 
-    @PreAuthorize("hasAuthority('VIEW_REPORTS')")
+    @PreAuthorize("hasAuthority('MANAGE_USERS')")
     @GetMapping("/dashboard/stats")
-    public ResponseEntity<Map<String, Object>> getDashboardStats(
+    public ResponseEntity<com.lms.www.leadmanagement.dto.DashboardStatsDTO> getDashboardStats(
             @RequestParam(value = "userId", required = false) Long userId,
+            @RequestParam(value = "teamId", required = false) Long teamId,
             @RequestParam(value = "start", required = false) @DateTimeFormat(iso = ISO.DATE_TIME) LocalDateTime start,
             @RequestParam(value = "end", required = false) @DateTimeFormat(iso = ISO.DATE_TIME) LocalDateTime end) {
         User requester = managerService.getCurrentUser();
-        return ResponseEntity.ok(adminService.getDashboardStats(start, end, requester, userId));
+        LocalDate fromDate = (start != null) ? start.toLocalDate() : LocalDate.now().minusDays(30);
+        LocalDate toDate = (end != null) ? end.toLocalDate() : LocalDate.now();
+        
+        java.util.Collection<User> allowedUsers = statsService.determineAllowedUsers(requester, userId, teamId);
+        return ResponseEntity.ok(statsService.getStats(allowedUsers, fromDate, toDate, false, requester, userId, teamId));
     }
 
     @PreAuthorize("hasAuthority('VIEW_REPORTS')")
@@ -162,7 +171,7 @@ public class ManagerController {
             @RequestParam(value = "start", required = false) @DateTimeFormat(iso = ISO.DATE_TIME) LocalDateTime start,
             @RequestParam(value = "end", required = false) @DateTimeFormat(iso = ISO.DATE_TIME) LocalDateTime end) {
         User manager = managerService.getCurrentUser();
-        return ResponseEntity.ok(adminService.getMemberPerformanceFiltered(start, end, manager, userId));
+        return ResponseEntity.ok(adminService.getMemberPerformanceFiltered(start, end, manager, userId, null));
     }
 
     @PreAuthorize("hasAuthority('MANAGE_USERS')")
@@ -203,7 +212,7 @@ public class ManagerController {
 
     @PreAuthorize("hasAuthority('MANAGE_USERS')")
     @GetMapping("/offices")
-    public ResponseEntity<List<Map<String, Object>>> getAllOffices() {
+    public ResponseEntity<List<com.lms.www.leadmanagement.dto.OfficeLocationDTO>> getAllOffices() {
         return ResponseEntity.ok(adminService.getAllOffices());
     }
 }

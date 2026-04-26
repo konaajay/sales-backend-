@@ -17,11 +17,21 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(403).body(error);
     }
 
-    @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<Map<String, String>> handleRuntimeException(RuntimeException ex) {
+    @ExceptionHandler(UnauthorizedAccessException.class)
+    public ResponseEntity<Map<String, String>> handleUnauthorizedAccessException(UnauthorizedAccessException ex) {
         Map<String, String> error = new HashMap<>();
         error.put("message", ex.getMessage());
-        return ResponseEntity.badRequest().body(error);
+        error.put("error", "UNAUTHORIZED");
+        return ResponseEntity.status(401).body(error);
+    }
+
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<Map<String, String>> handleRuntimeException(RuntimeException ex) {
+        System.err.println(">>> UNEXPECTED SERVER ERROR: " + ex.getMessage());
+        ex.printStackTrace();
+        Map<String, String> error = new HashMap<>();
+        error.put("message", "Internal Server Error: " + ex.getMessage());
+        return ResponseEntity.status(500).body(error);
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

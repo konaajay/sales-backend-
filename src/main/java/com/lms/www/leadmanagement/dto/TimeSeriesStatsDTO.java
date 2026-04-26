@@ -15,5 +15,6 @@ public class TimeSeriesStatsDTO {
     private LocalDate date;
     private long leadsCount;
     private long lostCount;
+    private long convertedCount;
     private BigDecimal revenue;
 }

@@ -20,5 +20,8 @@ public class LeadTaskDTO {
     private LocalDateTime dueDate;
     private String status;
     private String taskType;
+    private Long assignedToId;
+    private String assignedToName;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

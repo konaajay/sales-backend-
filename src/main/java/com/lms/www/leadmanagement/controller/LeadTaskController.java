@@ -53,15 +53,15 @@ public class LeadTaskController {
             // 1. Self-Healing Repair Engine: Scan for orphaned lead dates
             List<Lead> leadsWithDates = leadRepository.findByAssignedToIn(visibleUsers).stream()
                 .filter(l -> l.getFollowUpDate() != null)
-                .filter(l -> !List.of(Lead.Status.LOST, Lead.Status.PAID, Lead.Status.CONVERTED).contains(l.getStatus()))
+                .filter(l -> !List.of("LOST", "PAID", "CONVERTED").contains(l.getStatus()))
                 .collect(Collectors.toList());
                 
             for (Lead l : leadsWithDates) {
                 if (!leadTaskRepository.existsByLeadIdAndStatusAndDueDate(l.getId(), LeadTask.TaskStatus.PENDING, l.getFollowUpDate())) {
-                    String type = Lead.Status.EMI.equals(l.getStatus()) ? "EMI_COLLECTION" : "FOLLOW_UP";
+                    String type = "EMI".equals(l.getStatus()) ? "EMI_COLLECTION" : "FOLLOW_UP";
                     LeadTask repair = LeadTask.builder()
                             .lead(l)
-                            .title((Lead.Status.EMI.equals(l.getStatus()) ? "EMI Collection: " : "Follow-up Call: ") + l.getName())
+                            .title(("EMI".equals(l.getStatus()) ? "EMI Collection: " : "Follow-up Call: ") + l.getName())
                             .description("Auto-repaired task from lead due-date synchronization.")
                             .dueDate(l.getFollowUpDate())
                             .status(LeadTask.TaskStatus.PENDING)
@@ -71,7 +71,8 @@ public class LeadTaskController {
                 }
             }
             
-            tasks = leadTaskRepository.findByLeadAssignedToIn(visibleUsers);
+            java.util.List<Long> userIdList = visibleUsers.stream().map(com.lms.www.leadmanagement.entity.User::getId).collect(Collectors.toList());
+            tasks = leadTaskRepository.findFilteredByUserIds(userIdList, null, null);
         }
         
         return ResponseEntity.ok(tasks.stream().map(this::convertToDTO).collect(Collectors.toList()));
@@ -97,6 +98,19 @@ public class LeadTaskController {
     public ResponseEntity<LeadTaskDTO> addTask(@PathVariable Long leadId, @RequestBody LeadTask task) {
         Lead lead = leadRepository.findById(leadId).orElseThrow(() -> new RuntimeException("Lead not found"));
         task.setLead(lead);
+        
+        // Auto-assign to lead owner if not specified
+        if (task.getAssignedTo() == null) {
+            task.setAssignedTo(lead.getAssignedTo());
+        }
+        
+        // Set creator from current session
+        String email = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+        com.lms.www.leadmanagement.entity.User currentUser = userRepository.findByEmail(email).orElse(null);
+        if (task.getCreatedBy() == null) {
+            task.setCreatedBy(currentUser);
+        }
+        
         return ResponseEntity.ok(convertToDTO(leadTaskRepository.save(task)));
     }
 
@@ -116,8 +130,13 @@ public class LeadTaskController {
             return ResponseEntity.badRequest().build();
         }
 
+        String email = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
+        com.lms.www.leadmanagement.entity.User currentUser = userRepository.findByEmail(email).orElse(null);
+
         LeadTask task = LeadTask.builder()
                 .lead(lead)
+                .assignedTo(lead != null ? lead.getAssignedTo() : currentUser)
+                .createdBy(currentUser)
                 .title(request.getTitle())
                 .description(request.getDescription())
                 .dueDate(dueDate)
@@ -133,6 +152,7 @@ public class LeadTaskController {
     public ResponseEntity<LeadTaskDTO> updateStatus(@PathVariable Long taskId, @RequestParam LeadTask.TaskStatus status) {
         LeadTask task = leadTaskRepository.findById(taskId).orElseThrow(() -> new RuntimeException("Task not found"));
         task.setStatus(status);
+        task.setUpdatedAt(LocalDateTime.now()); // Explicitly set to ensure it counts for "Today"
         return ResponseEntity.ok(convertToDTO(leadTaskRepository.save(task)));
     }
 
@@ -149,12 +169,15 @@ public class LeadTaskController {
                 .lead(task.getLead() != null ? com.lms.www.leadmanagement.dto.LeadDTO.fromEntity(task.getLead()) : null)
                 .leadId(task.getLead() != null ? task.getLead().getId() : null)
                 .leadName(task.getLead() != null ? task.getLead().getName() : "General Task")
+                .assignedToId(task.getAssignedTo() != null ? task.getAssignedTo().getId() : null)
+                .assignedToName(task.getAssignedTo() != null ? task.getAssignedTo().getName() : null)
                 .title(task.getTitle())
                 .description(task.getDescription())
                 .dueDate(task.getDueDate())
                 .status(task.getStatus() != null ? task.getStatus().name() : "PENDING")
                 .taskType(task.getTaskType())
                 .createdAt(task.getCreatedAt())
+                .updatedAt(task.getUpdatedAt())
                 .build();
     }
 }

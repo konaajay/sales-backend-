@@ -108,7 +108,7 @@ public class CallTrackingService {
         if (record.getLead() != null) {
             Lead lead = record.getLead();
             try {
-                lead.setStatus(Lead.Status.valueOf(dto.getStatus().toUpperCase()));
+                lead.setStatus(dto.getStatus().toUpperCase());
             } catch (Exception e) {
                 // Ignore invalid status enum mappings if they don't match exactly
             }

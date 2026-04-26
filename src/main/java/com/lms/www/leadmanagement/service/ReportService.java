@@ -109,8 +109,8 @@ public class ReportService {
         long convertedCount = 0;
 
         if (allowedUsers != null) {
-            stats = allowedUsers.isEmpty() ? new HashMap<>() : leadRepository.getSummaryStats(allowedUsers, start, end);
             List<Long> ids = allowedUsers.stream().map(User::getId).collect(Collectors.toList());
+            stats = ids.isEmpty() ? new HashMap<>() : leadRepository.getSummaryStats(ids, start, end);
             if (!ids.isEmpty()) {
                 List<Map<String, Object>> revData = paymentRepository.getRevenuePerUser(ids, start, end);
                 for (Map<String, Object> map : revData) {
@@ -162,17 +162,27 @@ public class ReportService {
         // Fetch daily lead counts (Generated)
         List<Map<String, Object>> leadTrend;
         if (userIds != null) {
-            leadTrend = userIds.isEmpty() ? new ArrayList<>() : leadRepository.getDailyLeadTrend(userIds, start, end);
+            leadTrend = userIds.isEmpty() ? new ArrayList<>() : leadRepository.getDailyLeadTrendByIds(userIds, start, end);
         } else {
             leadTrend = leadRepository.getGlobalDailyLeadTrend(start, end);
         }
 
         // Fetch daily lost counts
         List<Map<String, Object>> lostTrend;
+        List<String> lostStatuses = List.of("LOST", "NOT_INTERESTED", "REJECTED");
         if (userIds != null) {
-            lostTrend = userIds.isEmpty() ? new ArrayList<>() : leadRepository.getDailyLostTrend(userIds, start, end);
+            lostTrend = userIds.isEmpty() ? new ArrayList<>() : leadRepository.getDailyLostTrendByIds(userIds, lostStatuses, start, end);
         } else {
-            lostTrend = leadRepository.getGlobalDailyLostTrend(start, end);
+            lostTrend = leadRepository.getGlobalDailyLostTrend(lostStatuses, start, end);
+        }
+
+        // Fetch daily converted counts
+        List<Map<String, Object>> convertedTrend;
+        List<String> successStatuses = List.of("CONVERTED", "PAID", "EMI", "SUCCESS");
+        if (userIds != null) {
+            convertedTrend = userIds.isEmpty() ? new ArrayList<>() : leadRepository.getDailyConvertedTrendByIds(userIds, successStatuses, start, end);
+        } else {
+            convertedTrend = leadRepository.getGlobalDailyConvertedTrend(successStatuses, start, end);
         }
 
         // Fetch daily revenue (Amount)
@@ -222,6 +232,25 @@ public class ReportService {
             }
         }
 
+        Map<LocalDate, Long> convertedByDate = new HashMap<>();
+        for (Map<String, Object> row : convertedTrend) {
+            Object dateObj = row.get("date");
+            LocalDate date = null;
+            if (dateObj instanceof java.sql.Date)
+                date = ((java.sql.Date) dateObj).toLocalDate();
+            else if (dateObj instanceof java.time.LocalDate)
+                date = (java.time.LocalDate) dateObj;
+
+            if (date != null) {
+                Object countObj = row.get("count");
+                long count = 0;
+                if (countObj instanceof Number) {
+                    count = ((Number) countObj).longValue();
+                }
+                convertedByDate.put(date, count);
+            }
+        }
+
         Map<LocalDate, BigDecimal> revenueByDate = payments.stream()
                 .filter(p -> p.getStatus() == com.lms.www.leadmanagement.entity.Payment.Status.PAID
                         || p.getStatus() == com.lms.www.leadmanagement.entity.Payment.Status.APPROVED)
@@ -238,6 +267,7 @@ public class ReportService {
                     .date(current)
                     .leadsCount(leadsByDate.getOrDefault(current, 0L))
                     .lostCount(lostByDate.getOrDefault(current, 0L))
+                    .convertedCount(convertedByDate.getOrDefault(current, 0L))
                     .revenue(revenueByDate.getOrDefault(current, BigDecimal.ZERO))
                     .build());
             current = current.plusDays(1);

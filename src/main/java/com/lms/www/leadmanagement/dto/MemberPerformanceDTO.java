@@ -14,6 +14,6 @@ public class MemberPerformanceDTO {
     private String username;
     private String role;
     private long totalLeads;
-    private long convertedLeads;
-    private long lostLeads;
+    private long convertedCount;
+    private long lostCount;
 }

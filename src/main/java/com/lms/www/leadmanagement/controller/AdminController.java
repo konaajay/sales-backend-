@@ -129,7 +129,7 @@ public class AdminController {
             @RequestParam(value = "start", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime start,
             @RequestParam(value = "end", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime end) {
         User requester = adminService.getCurrentUser();
-        return ResponseEntity.ok(adminService.getMemberPerformanceFiltered(start, end, requester, userId));
+        return ResponseEntity.ok(adminService.getMemberPerformanceFiltered(start, end, requester, userId, null));
     }
 
     @PreAuthorize("hasAuthority('MANAGE_USERS')")
