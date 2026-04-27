@@ -101,4 +101,16 @@ public class AttendanceController {
         if (userId == null) return ResponseEntity.status(401).build();
         return ResponseEntity.ok(ApiResponse.success(attendanceService.getMyLogs(userId)));
     }
+
+    @PostMapping("/preview")
+    public ResponseEntity<ApiResponse<com.lms.www.leadmanagement.dto.AttendancePreviewResponse>> preview(@RequestBody com.lms.www.leadmanagement.dto.AttendancePreviewRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(attendanceService.calculatePreview(request)));
+    }
+
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PostMapping("/manual")
+    public ResponseEntity<ApiResponse<String>> saveManual(@RequestBody com.lms.www.leadmanagement.dto.AttendancePreviewRequest request) {
+        attendanceService.saveManualEntry(request);
+        return ResponseEntity.ok(ApiResponse.success("Attendance entry synchronized successfully"));
+    }
 }

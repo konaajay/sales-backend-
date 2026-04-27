@@ -48,16 +48,26 @@ public class LeadService {
         List<DashboardProjection> projections = leadRepository.countByStatusForUsers(targetIds, start, end);
         
         Map<String, Object> stats = new HashMap<>();
+        // Dynamic Bucket Discovery
+        List<String> successStatuses = pipelineStageRepository.findByAnalyticBucketIn(List.of("SUCCESS", "CONVERTED", "PAID"))
+                .stream().map(s -> s.getStatusValue().toUpperCase()).collect(Collectors.toList());
+        if (successStatuses.isEmpty()) successStatuses = List.of("CONVERTED", "PAID", "EMI", "SUCCESS");
+
+        List<String> lostStatuses = pipelineStageRepository.findByAnalyticBucketIn(List.of("LOST", "NOT_INTERESTED", "REJECTED"))
+                .stream().map(s -> s.getStatusValue().toUpperCase()).collect(Collectors.toList());
+        if (lostStatuses.isEmpty()) lostStatuses = List.of("LOST", "NOT_INTERESTED", "REJECTED");
+
         long total = 0;
         long converted = 0;
         long lost = 0;
 
         for (DashboardProjection p : projections) {
+            String status = p.getStatus() != null ? p.getStatus().toUpperCase() : "";
             long count = p.getCount();
             total += count;
-            LeadStatus status = LeadStatus.fromString(p.getStatus());
-            if (status == LeadStatus.CONVERTED || status == LeadStatus.PAID) converted += count;
-            else if (status == LeadStatus.LOST || status == LeadStatus.NOT_INTERESTED) lost += count;
+            
+            if (successStatuses.contains(status)) converted += count;
+            else if (lostStatuses.contains(status)) lost += count;
         }
 
         stats.put("total", total);
@@ -75,7 +85,7 @@ public class LeadService {
         User user = securityService.getCurrentUser();
         List<User> context = List.of(user);
         
-        return leadRepository.findByAssignedToInOrCreatedByIn(context, context)
+        return leadRepository.findListByAssignedToInOrCreatedByIn(context, context)
                 .stream()
                 .sorted(Comparator.comparing(Lead::getCreatedAt).reversed())
                 .map(this::convertToDTO)
@@ -97,7 +107,7 @@ public class LeadService {
         }
 
         List<User> targetUsers = userRepository.findAllById(targetIds);
-        return leadRepository.findByAssignedToInOrCreatedByIn(targetUsers, targetUsers).stream()
+        return leadRepository.findListByAssignedToInOrCreatedByIn(targetUsers, targetUsers).stream()
                 .filter(l -> (start == null || !l.getCreatedAt().isBefore(start)) && (end == null || !l.getCreatedAt().isAfter(end)))
                 .sorted(Comparator.comparing(Lead::getCreatedAt).reversed())
                 .map(this::convertToDTO)
@@ -134,16 +144,16 @@ public class LeadService {
         }
 
         User user = securityService.getCurrentUser();
-        LeadStatus newStatus = LeadStatus.fromString(request.getStatus());
-        lead.setStatus(newStatus.name());
+        String status = request.getStatus().toUpperCase();
+        lead.setStatus(status);
         lead.setUpdatedBy(user);
 
-        if ("CONVERTED".equalsIgnoreCase(request.getStatus())) {
+        if ("CONVERTED".equalsIgnoreCase(status)) {
             initializeStudentFee(lead, request);
         }
 
-        saveNote(lead, user, request.getNote(), request.getStatus());
-        triggerPipelineActions(lead, newStatus, request);
+        saveNote(lead, user, request.getNote(), status);
+        triggerPipelineActions(lead, status, request);
 
         return convertToDTO(leadRepository.save(lead));
     }
@@ -241,11 +251,11 @@ public class LeadService {
         leadNoteRepository.save(note);
     }
 
-    private void triggerPipelineActions(Lead lead, LeadStatus status, StatusUpdateRequest request) {
-        pipelineStageRepository.findByStatusValue(status.name()).ifPresent(stage -> {
+    private void triggerPipelineActions(Lead lead, String status, StatusUpdateRequest request) {
+        pipelineStageRepository.findByStatusValue(status).ifPresent(stage -> {
             if (stage.isCreateTask()) {
                 if (stage.isRequireDate() && (request.getDueDate() == null || request.getDueDate().isEmpty())) {
-                    throw new InvalidRequestException("Date required for status: " + status.name());
+                    throw new InvalidRequestException("Date required for status: " + status);
                 }
 
                 LocalDateTime dueDate = LocalDateTime.now().plusDays(stage.getDefaultFollowupDays());
@@ -269,7 +279,7 @@ public class LeadService {
             }
         });
 
-        if ("LOST".equalsIgnoreCase(status.name()) || "NOT_INTERESTED".equalsIgnoreCase(status.name())) {
+        if ("LOST".equalsIgnoreCase(status) || "NOT_INTERESTED".equalsIgnoreCase(status)) {
             leadTaskRepository.cancelAllPendingByLeadId(lead.getId());
         }
     }
@@ -310,6 +320,7 @@ public class LeadService {
         return dto;
     }
 
+    @Transactional(readOnly = true)
     public LeadDTO getLeadById(Long id) {
         return leadRepository.findById(id).map(this::convertToDTO).orElseThrow();
     }
@@ -318,6 +329,7 @@ public class LeadService {
         return securityService.getCurrentUser();
     }
 
+    @Transactional(readOnly = true)
     public List<LeadDTO> getAllLeadsForManager(Long userId) {
         User requester = securityService.getCurrentUser();
         List<User> targets = new ArrayList<>();
@@ -331,7 +343,7 @@ public class LeadService {
             targets.add(requester);
         }
 
-        return leadRepository.findByAssignedToInOrCreatedByIn(targets, targets).stream()
+        return leadRepository.findListByAssignedToInOrCreatedByIn(targets, targets).stream()
                 .sorted(Comparator.comparing(Lead::getCreatedAt).reversed())
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
@@ -379,6 +391,7 @@ public class LeadService {
         return convertToDTO(leadRepository.save(lead));
     }
 
+    @Transactional(readOnly = true)
     public List<UserDTO> getCurrentUserSubordinates() {
         User user = securityService.getCurrentUser();
         return userRepository.findAllById(userRepository.findSubordinateIds(user.getId())).stream()

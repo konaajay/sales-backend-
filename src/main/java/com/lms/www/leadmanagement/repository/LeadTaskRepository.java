@@ -14,6 +14,7 @@ import java.util.List;
 @Repository
 public interface LeadTaskRepository extends JpaRepository<LeadTask, Long> {
 
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"lead", "lead.assignedTo", "lead.createdBy", "assignedTo", "createdBy"})
     List<LeadTask> findByLeadId(Long leadId);
 
     List<LeadTask> findByStatusIn(Collection<LeadTask.TaskStatus> statuses);
@@ -30,6 +31,7 @@ public interface LeadTaskRepository extends JpaRepository<LeadTask, Long> {
 
     List<LeadTask> findByLeadAssignedToInAndDueDateBetween(java.util.Collection<com.lms.www.leadmanagement.entity.User> users, LocalDateTime start, LocalDateTime end);
 
+    @org.springframework.data.jpa.repository.EntityGraph(attributePaths = {"lead", "lead.assignedTo", "lead.createdBy", "assignedTo", "createdBy"})
     @Query("SELECT t FROM LeadTask t LEFT JOIN t.assignedTo a LEFT JOIN t.createdBy c WHERE (a.id IN :userIds OR (a IS NULL AND c.id IN :userIds)) AND (:start IS NULL OR t.dueDate >= :start) AND (:end IS NULL OR t.dueDate <= :end)")
     List<LeadTask> findFilteredByUserIds(@Param("userIds") java.util.Collection<Long> userIds, @Param("start") java.time.LocalDateTime start, @Param("end") java.time.LocalDateTime end);
 

@@ -120,8 +120,12 @@ public class AttendanceService {
                 .orElseGet(() -> AttendancePolicy.builder().office(office).build());
 
         LocalDateTime now = nowInIndia();
-        boolean isLate = now.toLocalTime().isAfter(policy.getShiftStartTime()
-                .plusMinutes(policy.getGracePeriodMinutes() != null ? policy.getGracePeriodMinutes() : 0));
+        
+        // Priority: User's assigned shift, then Office Policy
+        LocalTime shiftStart = (user.getShift() != null) ? user.getShift().getStartTime() : policy.getShiftStartTime();
+        int graceMins = (user.getShift() != null) ? user.getShift().getGraceMinutes() : (policy.getGracePeriodMinutes() != null ? policy.getGracePeriodMinutes() : 0);
+
+        boolean isLate = now.toLocalTime().isAfter(shiftStart.plusMinutes(graceMins));
 
         AttendanceSession session = AttendanceSession.builder()
                 .user(user).office(office).checkInTime(now).status(AttendanceStatus.WORKING)
@@ -477,23 +481,103 @@ public class AttendanceService {
         daily.setTotalBreakMinutes((int) (totalBreakSecs / 60));
         daily.setUnauthorizedOutsideSeconds(totalOutsideSecs);
 
-        // Calculate dynamic thresholds based on the user's assigned shift
+        // Calculate dynamic thresholds based on the user's assigned shift or office policy
         long fullDaySecs = 28800; // Default 8 hours
         long halfDaySecs = 14400; // Default 4 hours
         
         if (user.getShift() != null) {
             fullDaySecs = user.getShift().getMinFullDayMinutes() * 60L;
             halfDaySecs = user.getShift().getMinHalfDayMinutes() * 60L;
+        } else {
+            AttendancePolicy policy = attendancePolicyRepository.findByOfficeId(office.getId()).orElse(null);
+            if (policy != null && policy.getMinimumWorkMinutes() != null) {
+                fullDaySecs = policy.getMinimumWorkMinutes() * 60L;
+                halfDaySecs = fullDaySecs / 2;
+            }
         }
 
-        if (totalWorkSecs >= fullDaySecs) {
-            daily.setStatus("PRESENT");
-        } else if (totalWorkSecs >= halfDaySecs) {
-            daily.setStatus("HALF_DAY");
-        } else {
-            daily.setStatus("ABSENT");
-        }
+        daily.setStatus(calculateAttendanceStatus(totalWorkSecs, fullDaySecs, halfDaySecs));
         attendanceDailyRepository.save(daily);
+    }
+
+    public String calculateAttendanceStatus(long workSecs, long fullDaySecs, long halfDaySecs) {
+        if (workSecs >= fullDaySecs) {
+            return "PRESENT";
+        } else if (workSecs >= halfDaySecs) {
+            return "HALF_DAY";
+        } else {
+            return "ABSENT";
+        }
+    }
+
+    public com.lms.www.leadmanagement.dto.AttendancePreviewResponse calculatePreview(com.lms.www.leadmanagement.dto.AttendancePreviewRequest request) {
+        LocalDateTime login = request.getLoginTime();
+        LocalDateTime logout = request.getLogoutTime();
+
+        if (login == null || logout == null || logout.isBefore(login)) {
+            return com.lms.www.leadmanagement.dto.AttendancePreviewResponse.builder()
+                    .workedMinutes(0).breakMinutes(0).effectiveMinutes(0).status("ABSENT").build();
+        }
+
+        long totalSecs = Duration.between(login, logout).toSeconds();
+        
+        // Calculate break overlap using provided or default timings
+        long breakSecs = 0;
+        
+        // Long Break
+        LocalTime lbStart = request.getLongBreakStart() != null ? request.getLongBreakStart() : DEFAULT_LONG_BREAK_START;
+        LocalTime lbEnd = request.getLongBreakEnd() != null ? request.getLongBreakEnd() : DEFAULT_LONG_BREAK_END;
+        breakSecs += calculateOverlapSeconds(login, logout, lbStart, lbEnd);
+        
+        // Short Break
+        LocalTime sbStart = request.getShortBreakStart() != null ? request.getShortBreakStart() : DEFAULT_SHORT_BREAK_START;
+        LocalTime sbEnd = request.getShortBreakEnd() != null ? request.getShortBreakEnd() : DEFAULT_SHORT_BREAK_END;
+        breakSecs += calculateOverlapSeconds(login, logout, sbStart, sbEnd);
+
+        long effectiveSecs = totalSecs - breakSecs;
+        if (effectiveSecs < 0) effectiveSecs = 0;
+
+        // Determine status
+        long fullDaySecs = request.getMinFullDayMinutes() != null ? request.getMinFullDayMinutes() * 60L : 28800;
+        long halfDaySecs = request.getMinHalfDayMinutes() != null ? request.getMinHalfDayMinutes() * 60L : 14400;
+
+        String status = calculateAttendanceStatus(effectiveSecs, fullDaySecs, halfDaySecs);
+
+        boolean isLate = false;
+        if (request.getShiftStart() != null) {
+            int grace = request.getGraceMinutes() != null ? request.getGraceMinutes() : 0;
+            isLate = login.toLocalTime().isAfter(request.getShiftStart().plusMinutes(grace));
+        }
+
+        return com.lms.www.leadmanagement.dto.AttendancePreviewResponse.builder()
+                .workedMinutes(totalSecs / 60)
+                .breakMinutes(breakSecs / 60)
+                .effectiveMinutes(effectiveSecs / 60)
+                .status(status)
+                .isLate(isLate)
+                .build();
+    }
+
+    @Transactional
+    public void saveManualEntry(com.lms.www.leadmanagement.dto.AttendancePreviewRequest request) {
+        User user = userRepository.findById(request.getUserId()).orElseThrow();
+        LocalDate date = request.getLoginTime().toLocalDate();
+        
+        com.lms.www.leadmanagement.dto.AttendancePreviewResponse preview = calculatePreview(request);
+        
+        AttendanceDaily daily = attendanceDailyRepository.findByUserIdAndDate(user.getId(), date)
+                .orElse(AttendanceDaily.builder().user(user).date(date).build());
+        
+        daily.setTotalWorkSeconds(preview.getEffectiveMinutes() * 60L);
+        daily.setTotalWorkMinutes((int) preview.getEffectiveMinutes());
+        daily.setTotalBreakSeconds(preview.getBreakMinutes() * 60L);
+        daily.setTotalBreakMinutes((int) preview.getBreakMinutes());
+        daily.setStatus(preview.getStatus());
+        daily.setLate(preview.isLate());
+        
+        attendanceDailyRepository.save(daily);
+        
+        log.info("Manual attendance saved for user {} on date {}", user.getId(), date);
     }
 
     @Transactional

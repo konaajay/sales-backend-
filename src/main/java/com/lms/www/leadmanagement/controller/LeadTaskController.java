@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/tasks")
+@org.springframework.transaction.annotation.Transactional(readOnly = true)
 public class LeadTaskController {
 
     @Autowired
@@ -95,6 +96,7 @@ public class LeadTaskController {
     }
 
     @PostMapping("/lead/{leadId}")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<LeadTaskDTO> addTask(@PathVariable Long leadId, @RequestBody LeadTask task) {
         Lead lead = leadRepository.findById(leadId).orElseThrow(() -> new RuntimeException("Lead not found"));
         task.setLead(lead);
@@ -116,6 +118,7 @@ public class LeadTaskController {
 
     @PostMapping
     @PreAuthorize("hasAuthority('VIEW_LEADS') or hasAuthority('ADMIN')")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<LeadTaskDTO> createManualTask(@RequestBody CreateTaskRequest request) {
         Long leadId = request.getLeadId();
         Lead lead = null;
@@ -149,6 +152,7 @@ public class LeadTaskController {
     }
 
     @PutMapping("/{taskId}/status")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<LeadTaskDTO> updateStatus(@PathVariable Long taskId, @RequestParam LeadTask.TaskStatus status) {
         LeadTask task = leadTaskRepository.findById(taskId).orElseThrow(() -> new RuntimeException("Task not found"));
         task.setStatus(status);
@@ -158,6 +162,7 @@ public class LeadTaskController {
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('ADMIN')")
+    @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<Void> deleteTask(@PathVariable Long id) {
         leadTaskRepository.deleteById(id);
         return ResponseEntity.noContent().build();

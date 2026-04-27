@@ -2,11 +2,13 @@ package com.lms.www.leadmanagement.security;
 
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
 import java.security.Key;
+import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -18,41 +20,66 @@ public class JwtUtils {
     private String jwtSecret;
 
     @Value("${jwt.expiration}")
-    private int jwtExpirationMs;
+    private long jwtExpirationMs;
+
+    private Key key;
+
+    @PostConstruct
+    public void init() {
+        byte[] keyBytes = jwtSecret.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        this.key = Keys.hmacShaKeyFor(keyBytes);
+    }
 
     public String generateJwtToken(Authentication authentication) {
-        UserDetailsImpl userPrincipal = (UserDetailsImpl) authentication.getPrincipal();
+
+        UserDetailsImpl user = (UserDetailsImpl) authentication.getPrincipal();
 
         Map<String, Object> claims = new HashMap<>();
-        claims.put("userId", userPrincipal.getId());
-        claims.put("role", userPrincipal.getRole());
-        claims.put("email", userPrincipal.getEmail());
+        claims.put("userId", user.getId());
+        claims.put("role", user.getRole());
+        claims.put("email", user.getEmail());
+        claims.put("type", "access"); // ✅ best practice
 
         return Jwts.builder()
                 .setClaims(claims)
-                .setSubject((userPrincipal.getUsername()))
+                .setSubject(user.getUsername())
                 .setIssuedAt(new Date())
-                .setExpiration(new Date((new Date()).getTime() + jwtExpirationMs))
-                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+                .setExpiration(new Date(System.currentTimeMillis() + jwtExpirationMs))
+                .signWith(key, SignatureAlgorithm.HS256)
                 .compact();
     }
 
-    private Key getSigningKey() {
-        return Keys.hmacShaKeyFor(jwtSecret.getBytes());
-    }
-
     public String getUserNameFromJwtToken(String token) {
-        return Jwts.parserBuilder().setSigningKey(getSigningKey()).build()
-                .parseClaimsJws(token).getBody().getSubject();
+        return getClaims(token).getSubject();
     }
 
-    public boolean validateJwtToken(String authToken) {
+    public Claims getClaims(String token) {
+        return Jwts.parserBuilder()
+                .setSigningKey(key)
+                .build()
+                .parseClaimsJws(token) // ✅ correct method
+                .getBody();
+    }
+
+    public boolean validateJwtToken(String token) {
         try {
-            Jwts.parserBuilder().setSigningKey(getSigningKey()).build().parse(authToken);
+            getClaims(token);
             return true;
-        } catch (Exception e) {
-            // Log error
+
+        } catch (ExpiredJwtException e) {
+            throw new RuntimeException("JWT expired");
+
+        } catch (UnsupportedJwtException e) {
+            throw new RuntimeException("Unsupported JWT");
+
+        } catch (MalformedJwtException e) {
+            throw new RuntimeException("Invalid JWT");
+
+        } catch (SignatureException e) {
+            throw new RuntimeException("Invalid signature");
+
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException("JWT empty");
         }
-        return false;
     }
 }

@@ -5,6 +5,7 @@ import com.lms.www.leadmanagement.entity.Lead;
 import com.lms.www.leadmanagement.entity.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -18,6 +19,10 @@ import java.util.Optional;
 
 @Repository
 public interface LeadRepository extends JpaRepository<Lead, Long> {
+    @Override
+    @EntityGraph(attributePaths = {"assignedTo", "createdBy", "updatedBy"})
+    Optional<Lead> findById(Long id);
+
     List<Lead> findByEmail(String email);
     List<Lead> findByMobile(String mobile);
     boolean existsByEmail(String email);
@@ -62,12 +67,15 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
     @Query("SELECT l FROM Lead l WHERE l.assignedTo IN :users OR l.createdBy = :creator")
     List<Lead> findByAssignedToInOrCreatedBy(@Param("users") Collection<User> users, @Param("creator") User creator);
 
+    @EntityGraph(attributePaths = {"assignedTo", "createdBy", "updatedBy"})
     @Query("SELECT l FROM Lead l WHERE l.assignedTo IN :users OR l.createdBy IN :creators")
-    List<Lead> findByAssignedToInOrCreatedByIn(@Param("users") Collection<User> users, @Param("creators") Collection<User> creators);
+    List<Lead> findListByAssignedToInOrCreatedByIn(@Param("users") Collection<User> users, @Param("creators") Collection<User> creators);
 
+    @EntityGraph(attributePaths = {"assignedTo", "createdBy", "updatedBy"})
     @Query("SELECT l FROM Lead l WHERE l.assignedTo IN :users OR l.createdBy IN :creators")
     Page<Lead> findByAssignedToInOrCreatedByIn(@Param("users") Collection<User> users, @Param("creators") Collection<User> creators, Pageable pageable);
 
+    @EntityGraph(attributePaths = {"assignedTo", "createdBy", "updatedBy"})
     @Query("SELECT l FROM Lead l WHERE (l.assignedTo IN :users OR l.createdBy IN :creators) AND UPPER(l.status) IN :statuses")
     Page<Lead> findByAssignedToInOrCreatedByInAndStatusIn(@Param("users") Collection<User> users, @Param("creators") Collection<User> creators, @Param("statuses") Collection<String> statuses, Pageable pageable);
 

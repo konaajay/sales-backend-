@@ -104,14 +104,15 @@ public class LeadPaymentService {
         if (userId != null) {
             securityService.validateHierarchyAccess(requester, userRepository.findById(userId).orElseThrow());
             targetUserIds.add(userId);
+            targetUserIds.addAll(userRepository.findSubordinateIds(userId));
         } else if (associateId != null) {
             securityService.validateHierarchyAccess(requester, userRepository.findById(associateId).orElseThrow());
             targetUserIds.add(associateId);
         } else if (tlId != null) {
             User tl = userRepository.findById(tlId).orElseThrow();
             securityService.validateHierarchyAccess(requester, tl);
-            targetUserIds.addAll(userRepository.findSubordinateIds(tlId));
             targetUserIds.add(tlId);
+            targetUserIds.addAll(userRepository.findSubordinateIds(tlId));
         } else {
             // Requester's full hierarchy
             if (!securityService.isAdmin(requester)) {
@@ -129,7 +130,7 @@ public class LeadPaymentService {
                     .map(this::convertToDTO).collect(Collectors.toList());
         } else {
             // Optimized query for hierarchy
-            List<Long> leadIds = leadRepository.findByAssignedToInOrCreatedByIn(
+            List<Long> leadIds = leadRepository.findListByAssignedToInOrCreatedByIn(
                     userRepository.findAllById(targetUserIds), 
                     userRepository.findAllById(targetUserIds)
             ).stream().map(Lead::getId).collect(Collectors.toList());

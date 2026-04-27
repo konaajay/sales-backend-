@@ -149,4 +149,6 @@ public interface AttendanceSessionRepository extends JpaRepository<AttendanceSes
             @org.springframework.data.repository.query.Param("userIds") Collection<Long> userIds,
             @org.springframework.data.repository.query.Param("start") LocalDateTime start,
             @org.springframework.data.repository.query.Param("end") LocalDateTime end);
+
+    boolean existsByOfficeId(Long officeId);
 }

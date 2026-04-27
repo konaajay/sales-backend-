@@ -84,36 +84,32 @@ public class DashboardStatsService {
         String currentViewerRole = viewerRole;
         List<Long> userIds = allowedUsers.stream().map(User::getId).collect(Collectors.toList());
         
-        Map<String, Long> statusDistribution;
-        if (currentViewerRole.equals("ADMIN") && targetUserId == null && teamId == null) {
-            statusDistribution = leadRepository.getGlobalSummaryStats(start, end);
-        } else if (targetUserId != null) {
-            // For single user, use a new strict repository method or handle inside service
-            statusDistribution = leadRepository.getUserSpecificSummaryStats(targetUserId, start, end);
+        // 3. Status Distribution (Pre-aggregated & Dynamic)
+        List<DashboardProjection> distributionList;
+        if (viewerRole.equals("ADMIN") && targetUserId == null && teamId == null) {
+            distributionList = leadRepository.countByStatusGlobal(start, end);
         } else {
-            statusDistribution = allowedUsers.isEmpty() ? new HashMap<>() : leadRepository.getSummaryStats(userIds, start, end);
+            distributionList = leadRepository.countByStatusForUsers(userIds, start, end);
         }
 
-        // 4. Member Performance (REMOVED)
-        List<MemberPerformanceDTO> performance = new java.util.ArrayList<>();
-
-        // Map keys for frontend (e.g., newCount -> NEW)
         Map<String, Long> mappedDistribution = new HashMap<>();
-        if (statusDistribution != null) {
-            mappedDistribution.put("NEW", asLong(statusDistribution.get("newCount")));
-            mappedDistribution.put("CONTACTED", asLong(statusDistribution.get("contactedCount")));
-            mappedDistribution.put("INTERESTED", asLong(statusDistribution.get("interestedCount")));
-            mappedDistribution.put("FOLLOW_UP", asLong(statusDistribution.get("followUpCount")));
-            mappedDistribution.put("CONVERTED", asLong(statusDistribution.get("convertedCount")));
-            mappedDistribution.put("LOST", asLong(statusDistribution.get("lostCount")));
-            mappedDistribution.put("REJECTED", asLong(statusDistribution.get("rejectedCount")));
+        for (DashboardProjection p : distributionList) {
+            if (p.getStatus() != null) {
+                mappedDistribution.put(p.getStatus().toUpperCase(), p.getCount());
+            }
         }
+
+        // Add legacy keys for frontend compatibility if missing
+        mappedDistribution.putIfAbsent("NEW", 0L);
+        mappedDistribution.putIfAbsent("CONTACTED", 0L);
+        mappedDistribution.putIfAbsent("FOLLOW_UP", mappedDistribution.getOrDefault("FOLLOWUP", 0L));
+        mappedDistribution.putIfAbsent("CONVERTED", mappedDistribution.getOrDefault("PAID", 0L) + mappedDistribution.getOrDefault("SUCCESS", 0L));
 
         return DashboardSummaryDTO.builder()
                 .stats(stats)
                 .trend(trend)
                 .statusDistribution(mappedDistribution)
-                .performance(performance)
+                .performance(stats.getPerformance())
                 .build();
     }
 
@@ -299,9 +295,15 @@ public class DashboardStatsService {
         List<String> rawLost = pipelineStageRepository.findByAnalyticBucketIn(List.of("LOST", "NOT_INTERESTED", "REJECTED"))
                 .stream().map(s -> s.getStatusValue().toUpperCase()).collect(Collectors.toList());
         final List<String> lostStatuses = new ArrayList<>(rawLost);
-        if (!lostStatuses.contains("LOST")) lostStatuses.add("LOST");
-        if (!lostStatuses.contains("NOT_INTERESTED")) lostStatuses.add("NOT_INTERESTED");
-        if (!lostStatuses.contains("REJECTED")) lostStatuses.add("REJECTED");
+        if (lostStatuses.isEmpty()) {
+            lostStatuses.addAll(List.of("LOST", "NOT_INTERESTED", "REJECTED"));
+        }
+
+        List<String> rawInterested = pipelineStageRepository.findByAnalyticBucketIn(List.of("INTERESTED", "UNDER_REVIEW", "FOLLOWUP", "WORKING"))
+                .stream().map(s -> s.getStatusValue().toUpperCase()).collect(Collectors.toList());
+        final List<String> interestedStatuses = rawInterested.isEmpty()
+                ? List.of("INTERESTED", "UNDER_REVIEW", "FOLLOWUP", "WORKING")
+                : rawInterested;
 
         List<String> rawClosed = pipelineStageRepository.findByAnalyticBucketIn(List.of("CLOSED", "COMPLETED", "TERMINATED"))
                 .stream().map(s -> s.getStatusValue().toUpperCase()).collect(Collectors.toList());
@@ -446,9 +448,9 @@ public class DashboardStatsService {
         }
 
         CompletableFuture<Long> interestedCountFuture = CompletableFuture.supplyAsync(() -> {
-            if (isGlobalAdmin && !hasFilter) return leadRepository.countByCreatedAtBetweenAndStatusIn(start, end, List.of("INTERESTED", "UNDER_REVIEW"));
+            if (isGlobalAdmin && !hasFilter) return leadRepository.countByCreatedAtBetweenAndStatusIn(start, end, interestedStatuses);
             if (finalQueryUserIds.isEmpty()) return 0L;
-            return leadRepository.countSquadLeadsByStatus(finalQueryUserIds, List.of("INTERESTED", "UNDER_REVIEW"), start, end);
+            return leadRepository.countSquadLeadsByStatus(finalQueryUserIds, interestedStatuses, start, end);
         });
 
         CompletableFuture<Long> totalLostCountFuture = CompletableFuture.supplyAsync(() -> {
