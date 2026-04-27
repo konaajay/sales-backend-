@@ -103,6 +103,7 @@ public class WebSecurityConfig {
         config.setAllowedOrigins(List.of(
                 "http://localhost:3000",
                 "http://100.85.146.60:3000",
+                "https://salescr.netlify.app",
                 "https://salescrms.netlify.app",
                 "https://yourdomain.com"));
 
