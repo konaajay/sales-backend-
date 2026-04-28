@@ -610,7 +610,7 @@ public class AttendanceService {
     public AttendanceDTO startBreak(Long userId, String type) {
         AttendanceSession session = attendanceSessionRepository
                 .findFirstByUserIdAndStatusInOrderByCheckInTimeDesc(userId, ACTIVE_STATUSES)
-                .orElseThrow(() -> new RuntimeException("No active session to start break."));
+                .orElseThrow(() -> new IllegalArgumentException("No active session. Please Punch In first."));
         session.setStatus(
                 "LONG".equalsIgnoreCase(type) ? AttendanceStatus.ON_LONG_BREAK : AttendanceStatus.ON_SHORT_BREAK);
         session.setOutsideStartTime(nowInIndia());
@@ -621,7 +621,7 @@ public class AttendanceService {
     public AttendanceDTO endBreak(Long userId) {
         AttendanceSession session = attendanceSessionRepository
                 .findFirstByUserIdAndStatusInOrderByCheckInTimeDesc(userId, ACTIVE_STATUSES)
-                .orElseThrow(() -> new RuntimeException("No active session found."));
+                .orElseThrow(() -> new IllegalArgumentException("No active session found."));
         session.setStatus(AttendanceStatus.WORKING);
         session.setOutsideStartTime(null);
         return convertToDTO(attendanceSessionRepository.save(session), session.getCheckInTime().toLocalDate());

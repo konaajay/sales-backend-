@@ -31,18 +31,31 @@ public class PipelineStageController {
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN')")
     public ResponseEntity<?> createStage(@RequestBody PipelineStage stage) {
+        System.out.println(">>> Request: CREATE PipelineStage - Label: " + stage.getLabel() + ", Value: " + stage.getStatusValue());
+        if (stage.getStatusValue() == null || stage.getStatusValue().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Status value is required"));
+        }
         if (pipelineStageRepository.existsByStatusValue(stage.getStatusValue())) {
-            return ResponseEntity.badRequest().body(Map.of("message", "Status value already exists"));
+            return ResponseEntity.badRequest().body(Map.of("message", "Status value '" + stage.getStatusValue() + "' already exists"));
         }
         return ResponseEntity.ok(pipelineStageRepository.save(stage));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN')")
-    public ResponseEntity<PipelineStage> updateStage(@PathVariable Long id, @RequestBody PipelineStage stageDetails) {
+    public ResponseEntity<?> updateStage(@PathVariable Long id, @RequestBody PipelineStage stageDetails) {
+        System.out.println(">>> Request: UPDATE PipelineStage ID: " + id + " - New Label: " + stageDetails.getLabel());
         PipelineStage stage = pipelineStageRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Stage not found"));
         
+        // If status value is changing, check for duplicates
+        if (stageDetails.getStatusValue() != null && !stageDetails.getStatusValue().equals(stage.getStatusValue())) {
+            if (pipelineStageRepository.existsByStatusValue(stageDetails.getStatusValue())) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Status value '" + stageDetails.getStatusValue() + "' already exists"));
+            }
+            stage.setStatusValue(stageDetails.getStatusValue());
+        }
+
         stage.setLabel(stageDetails.getLabel());
         stage.setColor(stageDetails.getColor());
         stage.setAnalyticBucket(stageDetails.getAnalyticBucket());

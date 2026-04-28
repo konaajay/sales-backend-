@@ -26,8 +26,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<Map<String, String>> handleRuntimeException(RuntimeException ex) {
-        System.err.println(">>> UNEXPECTED SERVER ERROR: " + ex.getMessage());
+    public ResponseEntity<Map<String, String>> handleRuntimeException(RuntimeException ex, jakarta.servlet.http.HttpServletRequest request) {
+        System.err.println(">>> UNEXPECTED SERVER ERROR at " + request.getRequestURI() + ": " + ex.getMessage());
         ex.printStackTrace();
         Map<String, String> error = new HashMap<>();
         error.put("message", "Internal Server Error: " + ex.getMessage());
@@ -35,9 +35,10 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> handleIllegalArgumentException(IllegalArgumentException ex) {
+    public ResponseEntity<Map<String, String>> handleIllegalArgumentException(IllegalArgumentException ex, jakarta.servlet.http.HttpServletRequest request) {
+        System.err.println(">>> BAD REQUEST at " + request.getRequestURI() + ": " + ex.getMessage());
         Map<String, String> error = new HashMap<>();
-        error.put("message", "Invalid parameter: " + ex.getMessage());
+        error.put("message", ex.getMessage());
         return ResponseEntity.badRequest().body(error);
     }
 }
