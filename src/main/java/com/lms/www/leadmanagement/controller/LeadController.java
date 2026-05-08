@@ -1,0 +1,118 @@
+package com.lms.www.leadmanagement.controller;
+
+import com.lms.www.leadmanagement.dto.LeadDTO;
+import com.lms.www.leadmanagement.service.LeadService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.web.multipart.MultipartFile;
+import com.lms.www.leadmanagement.dto.BulkUploadResponseDTO;
+import com.lms.www.leadmanagement.service.LeadBulkUploadService;
+
+
+@RestController
+
+@RequestMapping("/api/leads")
+public class LeadController {
+
+    @Autowired
+    private LeadService leadService;
+
+    @Autowired
+    private LeadBulkUploadService bulkUploadService;
+
+    @Autowired
+    private com.lms.www.leadmanagement.service.LeadPaymentService leadPaymentService;
+
+
+    @GetMapping("/alerts/upcoming")
+    @PreAuthorize("hasAnyAuthority('VIEW_LEADS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_TEAM_LEADER', 'ROLE_ASSOCIATE', 'ADMIN', 'MANAGER', 'TEAM_LEADER', 'ASSOCIATE')")
+    public ResponseEntity<List<LeadDTO>> getUpcomingFollowUps() {
+        return ResponseEntity.ok(leadService.getUpcomingFollowUps());
+    }
+
+    @GetMapping("/stats")
+    @PreAuthorize("hasAnyAuthority('VIEW_LEADS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_TEAM_LEADER', 'ROLE_ASSOCIATE', 'ADMIN', 'MANAGER', 'TEAM_LEADER', 'ASSOCIATE')")
+    public ResponseEntity<Map<String, Object>> getLeadStats() {
+        return ResponseEntity.ok(leadService.getLeadStats());
+    }
+
+    @GetMapping("/my")
+    @PreAuthorize("hasAnyAuthority('VIEW_LEADS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_TEAM_LEADER', 'ROLE_ASSOCIATE', 'ADMIN', 'MANAGER', 'TEAM_LEADER', 'ASSOCIATE')")
+    public ResponseEntity<List<LeadDTO>> getMyLeads() {
+        return ResponseEntity.ok(leadService.getMyLeads());
+    }
+
+
+    @GetMapping("/{id:[0-9]+}")
+    @PreAuthorize("hasAnyAuthority('VIEW_LEADS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_TEAM_LEADER', 'ROLE_ASSOCIATE', 'ADMIN', 'MANAGER', 'TEAM_LEADER', 'ASSOCIATE')")
+    public ResponseEntity<LeadDTO> getLeadById(@PathVariable Long id) {
+        return ResponseEntity.ok(leadService.getLeadById(id));
+    }
+
+    @PostMapping
+    @PreAuthorize("hasAnyAuthority('CREATE_LEADS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_TEAM_LEADER', 'ROLE_ASSOCIATE', 'ADMIN', 'MANAGER', 'TEAM_LEADER', 'ASSOCIATE')")
+    public ResponseEntity<LeadDTO> createLead(@RequestBody LeadDTO leadDTO) {
+        return ResponseEntity.ok(leadService.createLead(leadDTO));
+    }
+
+    @PostMapping("/bulk-upload")
+    @PreAuthorize("hasAnyAuthority('BULK_UPLOAD', 'ROLE_ADMIN', 'ROLE_MANAGER')")
+    public ResponseEntity<BulkUploadResponseDTO> bulkUploadLeads(@RequestParam("file") MultipartFile file) {
+        return ResponseEntity.ok(bulkUploadService.uploadLeads(file, null));
+    }
+
+    @PutMapping("/{id:[0-9]+}")
+    @PreAuthorize("hasAnyAuthority('VIEW_LEADS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_TEAM_LEADER', 'ROLE_ASSOCIATE', 'ADMIN', 'MANAGER', 'TEAM_LEADER', 'ASSOCIATE')")
+    public ResponseEntity<LeadDTO> updateLead(@PathVariable Long id, @RequestBody LeadDTO leadDTO) {
+        return ResponseEntity.ok(leadService.updateLead(id, leadDTO));
+    }
+
+    @PutMapping("/{id}/status")
+    @PreAuthorize("hasAnyAuthority('UPDATE_LEAD_STATUS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_TEAM_LEADER', 'ROLE_ASSOCIATE', 'ADMIN', 'MANAGER', 'TEAM_LEADER', 'ASSOCIATE')")
+    public ResponseEntity<LeadDTO> updateStatus(
+            @PathVariable Long id,
+            @RequestBody com.lms.www.leadmanagement.dto.StatusUpdateRequest request) {
+        return ResponseEntity.ok(leadService.updateStatus(id, request));
+    }
+
+    @PostMapping("/{id}/reject")
+    @PreAuthorize("hasAnyAuthority('UPDATE_LEAD_STATUS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_TEAM_LEADER', 'ROLE_ASSOCIATE', 'ADMIN', 'MANAGER', 'TEAM_LEADER', 'ASSOCIATE')")
+    public ResponseEntity<LeadDTO> rejectLead(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> rejectionData) {
+        return ResponseEntity.ok(leadService.rejectLead(id, rejectionData));
+    }
+
+    @PostMapping("/{id}/record-outcome")
+    @PreAuthorize("hasAnyAuthority('UPDATE_LEAD_STATUS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_TEAM_LEADER', 'ROLE_ASSOCIATE', 'ADMIN', 'MANAGER', 'TEAM_LEADER', 'ASSOCIATE')")
+    public ResponseEntity<LeadDTO> recordCallOutcome(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> outcomeData) {
+        return ResponseEntity.ok(leadService.recordCallOutcome(id, outcomeData));
+    }
+
+    @GetMapping("/{id}/fee-structure")
+    @PreAuthorize("hasAnyAuthority('VIEW_LEADS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_TEAM_LEADER', 'ROLE_ASSOCIATE', 'ADMIN', 'MANAGER', 'TEAM_LEADER', 'ASSOCIATE')")
+    public ResponseEntity<Map<String, Object>> getStudentFee(@PathVariable Long id) {
+        return ResponseEntity.ok(leadPaymentService.getStudentFeeStructure(id));
+    }
+
+    @GetMapping("/{id}/history")
+    @PreAuthorize("hasAnyAuthority('VIEW_LEADS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_TEAM_LEADER', 'ROLE_ASSOCIATE', 'ADMIN', 'MANAGER', 'TEAM_LEADER', 'ASSOCIATE')")
+    public ResponseEntity<List<com.lms.www.leadmanagement.dto.LeadAuditLogDTO>> getLeadHistory(@PathVariable Long id) {
+        return ResponseEntity.ok(leadService.getLeadHistory(id));
+    }
+
+    @GetMapping("/program-protocols")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<?> getProgramProtocols() {
+        return ResponseEntity.ok(leadService.getAllActiveCourses());
+    }
+
+}

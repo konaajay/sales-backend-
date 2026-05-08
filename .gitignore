@@ -1,0 +1,12 @@
+target/
+node_modules/
+.env
+.idea/
+*.iml
+.settings/
+.project
+.classpath
+.factorypath
+bin/
+logs/
+uploads/
