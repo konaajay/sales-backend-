@@ -38,12 +38,23 @@ public class WfhRequest {
     @Builder.Default
     private Integer requestedDays = 0;
 
+    @Column(name = "created_at")
     private LocalDateTime createdAt;
+
+    @Column(name = "responded_at")
     private LocalDateTime respondedAt;
     
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "responded_by")
+    @JoinColumn(name = "responded_by_id")
     private User respondedBy;
+
+    @PrePersist
+    protected void onCreate() {
+        this.createdAt = LocalDateTime.now();
+        if (startDate != null && endDate != null) {
+            this.requestedDays = (int) java.time.temporal.ChronoUnit.DAYS.between(startDate, endDate) + 1;
+        }
+    }
 
     // Helper to check if still valid
     public boolean isActiveOn(LocalDateTime now) {
