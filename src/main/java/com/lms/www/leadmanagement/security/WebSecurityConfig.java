@@ -105,27 +105,22 @@ public class WebSecurityConfig {
 
     @Bean
     public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
-
         var config = new org.springframework.web.cors.CorsConfiguration();
 
-        // ✅ FIX: allow patterns for flexible deployment
-        config.setAllowedOriginPatterns(List.of(
-                "http://localhost:[*]",
-                "http://100.30.239.118:[*]",
+        config.setAllowedOrigins(List.of(
                 "http://100.30.239.118",
-                "http://54.84.148.176:[*]",
-                "http://54.84.148.176:8080",
+                "http://52.90.98.188",
+                "http://localhost:5173",
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
                 "http://54.84.148.176"
-        // "http://100.85.146.60:[*]",
-        // "https://*.netlify.app",
-        // "https://salessa.netlify.app",
-        // "https://salessaless.netlify.app",
-        // "https://yourdomain.com"
         ));
 
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         config.setAllowedHeaders(List.of("*"));
+        config.setExposedHeaders(List.of("Authorization"));
         config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
 
         var source = new org.springframework.web.cors.UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
