@@ -374,7 +374,7 @@ public class LeadPaymentService {
     public PaymentDTO generateInvoice(Long leadId) {
         return paymentRepository.findByLeadIdAndStatus(leadId, Payment.Status.PAID).stream()
                 .max(Comparator.comparing(Payment::getCreatedAt))
-                .map(this::convertToDTO)
+                .map(p -> convertToDTO(p))
                 .orElseThrow(() -> new ResourceNotFoundException("No successful payment found for lead: " + leadId));
     }
 
@@ -407,11 +407,11 @@ public class LeadPaymentService {
         // Optimization: Use optimized lead fetching
         if (isGlobalAdmin) {
             return paymentRepository.findFiltered(null, start, end, pStatus).stream()
-                    .map(this::convertToDTO).collect(Collectors.toList());
+                    .map(p -> convertToDTO(p)).collect(Collectors.toList());
         } else {
             // Optimized query for hierarchy using direct JOIN
             return paymentRepository.findFilteredByUserHierarchy(new java.util.ArrayList<>(targetUserIds), start, end, pStatus).stream()
-                    .map(this::convertToDTO).collect(Collectors.toList());
+                    .map(p -> convertToDTO(p)).collect(Collectors.toList());
         }
     }
 
