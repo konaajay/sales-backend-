@@ -16,6 +16,7 @@ public class DashboardStatsDTO {
     private long presentCount;
     private long absentCount;
     private long halfDayCount;
+    private long lateCount;
 
     private BigDecimal dailyRevenue;
     private BigDecimal monthlyRevenue;

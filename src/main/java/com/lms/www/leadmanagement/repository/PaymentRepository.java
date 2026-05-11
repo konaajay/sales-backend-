@@ -29,6 +29,8 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     List<Payment> findAllByStatus(Payment.Status status);
     
     List<Payment> findByLeadIdAndStatus(Long leadId, Payment.Status status);
+    
+    void deleteByLeadIdAndStatusAndPaymentTypeIn(Long leadId, Payment.Status status, List<String> paymentTypes);
 
     @Query("SELECT p FROM Payment p WHERE (:status IS NULL OR p.status = :status) " +
             "AND (:leadIds IS NULL OR p.leadId IN :leadIds) " +

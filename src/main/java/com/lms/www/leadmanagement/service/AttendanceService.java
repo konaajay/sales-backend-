@@ -211,6 +211,8 @@ public class AttendanceService {
         daily.setLoginTime(session.getCheckInTime());
         daily.setLogoutTime(now);
         daily.setTotalWorkMinutes((int)(session.getTotalWorkSeconds() / 60));
+        daily.setLate(session.isLate());
+        daily.setLateMinutes(session.getLateMinutes());
         
         long workMins = session.getTotalWorkSeconds() / 60;
         if (workMins >= 480) daily.setStatus("PRESENT");
@@ -290,6 +292,7 @@ public class AttendanceService {
                 .userId(user.getId()).userName(user.getName())
                 .date(date).checkInTime(d.getLoginTime()).checkOutTime(d.getLogoutTime())
                 .status(d.getStatus()).totalWorkMinutes(d.getTotalWorkMinutes())
+                .late(d.isLate()).lateMinutes(d.getLateMinutes())
                 .build();
     }
 

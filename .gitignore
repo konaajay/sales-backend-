@@ -10,3 +10,4 @@ node_modules/
 bin/
 logs/
 uploads/
+application-local.properties

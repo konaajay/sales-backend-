@@ -41,6 +41,12 @@ public class AttendanceDaily {
     @Column(columnDefinition = "TEXT")
     private String note;
 
+    @Builder.Default
+    private boolean isLate = false;
+
+    @Builder.Default
+    private Integer lateMinutes = 0;
+
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

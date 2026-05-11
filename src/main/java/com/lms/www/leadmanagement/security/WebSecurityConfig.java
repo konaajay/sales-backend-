@@ -61,7 +61,9 @@ public class WebSecurityConfig {
                 .authorizeHttpRequests(auth -> auth
 
                         .requestMatchers(org.springframework.web.cors.CorsUtils::isPreFlightRequest).permitAll()
-                        .requestMatchers("/api/auth/login", "/api/auth/forgot-password", "/api/auth/reset-password", "/error").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/forgot-password", "/api/auth/reset-password",
+                                "/error")
+                        .permitAll()
                         .requestMatchers("/api/public/**", "/api/payments/webhook/**").permitAll()
 
                         // Restrict payment endpoints properly
@@ -81,17 +83,21 @@ public class WebSecurityConfig {
                 .exceptionHandling(ex -> ex
 
                         .authenticationEntryPoint((req, res, e) -> {
-                            System.err.println("[SECURITY] 401 Unauthorized for: " + req.getRequestURI() + " | Error: " + e.getMessage());
+                            System.err.println("[SECURITY] 401 Unauthorized for: " + req.getRequestURI() + " | Error: "
+                                    + e.getMessage());
                             res.setContentType("application/json");
                             res.setStatus(401);
-                            res.getWriter().write("{\"error\":\"Unauthorized\", \"path\":\"" + req.getRequestURI() + "\"}");
+                            res.getWriter()
+                                    .write("{\"error\":\"Unauthorized\", \"path\":\"" + req.getRequestURI() + "\"}");
                         })
 
                         .accessDeniedHandler((req, res, e) -> {
-                            System.err.println("[SECURITY] 403 Forbidden for: " + req.getRequestURI() + " | Error: " + e.getMessage());
+                            System.err.println("[SECURITY] 403 Forbidden for: " + req.getRequestURI() + " | Error: "
+                                    + e.getMessage());
                             res.setContentType("application/json");
                             res.setStatus(403);
-                            res.getWriter().write("{\"error\":\"Forbidden\", \"path\":\"" + req.getRequestURI() + "\"}");
+                            res.getWriter()
+                                    .write("{\"error\":\"Forbidden\", \"path\":\"" + req.getRequestURI() + "\"}");
                         }));
 
         return http.build();
@@ -105,14 +111,17 @@ public class WebSecurityConfig {
         // ✅ FIX: allow patterns for flexible deployment
         config.setAllowedOriginPatterns(List.of(
                 "http://localhost:[*]",
-                "http://127.0.0.1:[*]",
+                "http://100.30.239.118:[*]",
+                "http://100.30.239.118",
                 "http://54.84.148.176:[*]",
-                "http://54.84.148.176",
-                "http://100.85.146.60:[*]",
-                "https://*.netlify.app",
-                "https://salessa.netlify.app",
-                "https://salessaless.netlify.app",
-                "https://yourdomain.com"));
+                "http://54.84.148.176:8080",
+                "http://54.84.148.176"
+        // "http://100.85.146.60:[*]",
+        // "https://*.netlify.app",
+        // "https://salessa.netlify.app",
+        // "https://salessaless.netlify.app",
+        // "https://yourdomain.com"
+        ));
 
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));

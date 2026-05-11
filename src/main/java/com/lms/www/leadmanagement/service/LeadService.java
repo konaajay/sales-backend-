@@ -240,6 +240,13 @@ public class LeadService {
 
         // Handle full installment map if provided
         if (request.getInstallments() != null && !request.getInstallments().isEmpty()) {
+            // CRITICAL: Clear old pending installments before creating new roadmap
+            paymentRepository.deleteByLeadIdAndStatusAndPaymentTypeIn(
+                lead.getId(), 
+                Payment.Status.PENDING, 
+                List.of("EMI_INSTALLMENT", "INSTALLMENT")
+            );
+
             for (StatusUpdateRequest.InstallmentMap inst : request.getInstallments()) {
                 LocalDateTime due = null;
                 try {

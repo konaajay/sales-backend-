@@ -182,21 +182,15 @@ public class DashboardStatsService {
                                 start.minusMonths(12), end),
                 0L);
 
-        CompletableFuture<long[]> attendanceStatsFuture = safeAsync(() -> {
-            // Only use global counts if NO filters are active
-            boolean noFilters = targetUserId == null && teamId == null;
-            
-            long present = (isGlobalAdmin && noFilters)
-                    ? attendanceRepository.countPresentUsers(dayStart, dayEnd)
-                    : attendanceRepository.countPresentUsersIn(userIdList, dayStart, dayEnd);
-            long late = (isGlobalAdmin && noFilters)
-                    ? attendanceRepository.countLateUsers(dayStart, dayEnd)
-                    : attendanceRepository.countLateUsersIn(userIdList, dayStart, dayEnd);
-            long totalScopeUsers = (isGlobalAdmin && noFilters)
-                    ? userRepository.countActiveUsersByDate(dayStart.toLocalDate())
-                    : userIdList.size();
-            return new long[] { present, late, Math.max(0, totalScopeUsers - present) };
-        }, new long[] { 0, 0, 0 });
+        // Optimized Attendance Stats using Repository Counts
+        CompletableFuture<Long> presentCountFuture = safeAsync(
+                () -> isGlobalAdmin ? attendanceRepository.countPresentUsers(dayStart, now)
+                        : attendanceRepository.countPresentUsersIn(userIdList, dayStart, now),
+                0L);
+        CompletableFuture<Long> lateCountFuture = safeAsync(
+                () -> isGlobalAdmin ? attendanceRepository.countLateUsers(dayStart, now)
+                        : attendanceRepository.countLateUsersIn(userIdList, dayStart, now),
+                0L);
 
         CompletableFuture<BigDecimal> dailyRevenueFuture = safeAsync(
                 () -> isGlobalAdmin ? paymentRepository.getGlobalTotalRevenue(start, end)
@@ -232,8 +226,8 @@ public class DashboardStatsService {
                         : taskRepository.countFollowupsByType(userIdList, "EMI_COLLECTION", dayStart, dayEnd),
                 0L);
         CompletableFuture<Long> todayFollowupsFuture = safeAsync(
-                () -> isGlobalAdmin ? taskRepository.countGlobalFollowups(now, dayEnd)
-                        : taskRepository.countFollowups(userIdList, now, dayEnd),
+                () -> isGlobalAdmin ? taskRepository.countGlobalFollowups(dayStart, dayEnd)
+                        : taskRepository.countFollowups(userIdList, dayStart, dayEnd),
                 0L);
         CompletableFuture<Long> pendingTasksFuture = safeAsync(
                 () -> isGlobalAdmin ? taskRepository.countGlobalPendingTasks(now)
@@ -311,12 +305,13 @@ public class DashboardStatsService {
                 new ArrayList<>());
 
         try {
-            CompletableFuture.allOf(activeLoadFuture, attendanceStatsFuture, monthlyRevenueFuture, dailyRevenueFuture,
+            CompletableFuture.allOf(activeLoadFuture, monthlyRevenueFuture, dailyRevenueFuture,
                     pendingRevenueFuture, forecastRevenueFuture, pendingPaymentsCountFuture, todayFollowupsFuture,
                     pendingTasksFuture, interestedCountFuture, totalLostCountFuture, totalLeadsCountFuture,
                     convertedCountFuture, activeTicketsFuture, pendingTicketsFuture, resolvedTicketsFuture,
                     closedTicketsFuture, todayPaymentsCountFuture, overduePaymentsCountFuture, pendingLeadsCountFuture,
-                    leadTrendFuture, convertedTrendFuture, lostTrendFuture, revenueTrendFuture, completedTodayFuture)
+                    leadTrendFuture, convertedTrendFuture, lostTrendFuture, revenueTrendFuture, completedTodayFuture,
+                    presentCountFuture, lateCountFuture)
                     .get(15, java.util.concurrent.TimeUnit.SECONDS);
         } catch (Exception e) {
         }
@@ -359,7 +354,7 @@ public class DashboardStatsService {
         filler.accept(lostTrendFuture.join(), "lost");
         filler.accept(revenueTrendFuture.join(), "revenue");
 
-        long[] attStats = attendanceStatsFuture.join();
+        // long[] attStats = attendanceStatsFuture.join(); // Removed as we run synchronously now
         BigDecimal monthly = monthlyRevenueFuture.join();
         // Use month/year from the filter range end instead of start to ensure current month targets show up in 'Last 30 Days' views
         int filterMonth = (to != null ? to : LocalDate.now()).getMonthValue();
@@ -428,8 +423,13 @@ public class DashboardStatsService {
                 .divide(monthlyTarget, 4, java.math.RoundingMode.HALF_UP).multiply(new BigDecimal(100)).doubleValue()
                 : 0.0;
 
+        Long presentCount = presentCountFuture.join();
+        Long lateCount = lateCountFuture.join();
+        Long absentCount = Math.max(0L, (long)userIdList.size() - presentCount);
+
         return DashboardStatsDTO.builder()
-                .presentCount(attStats[0]).absentCount(attStats[2]).halfDayCount(attStats[1])
+                .presentCount(presentCount).absentCount(absentCount).halfDayCount(0L)
+                .lateCount(lateCount)
                 .dailyRevenue(dailyRevenueFuture.join()).monthlyRevenue(monthly)
                 .expectedRevenue(pendingRevenueFuture.join())
                 .pendingPaymentsAmount(pendingRevenueFuture.join()).forecastRevenue(forecastRevenueFuture.join())

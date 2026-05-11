@@ -127,6 +127,10 @@ public class LeadPaymentService {
                         .dueDate(dueDate)
                         .note("Planned during initial link generation")
                         .build());
+                
+                if (dueDate != null) {
+                    createLeadTask(lead, dueDate, "EMI Collection - Planned", "EMI_COLLECTION");
+                }
             }
         }
 
@@ -578,6 +582,12 @@ public class LeadPaymentService {
                 .taskType(type)
                 .build();
         leadTaskRepository.save(task);
+        
+        // Sync the lead's follow-up date to ensure it appears in "Today's Focus"
+        if (lead.getFollowUpDate() == null || dueDate.isBefore(lead.getFollowUpDate()) || dueDate.toLocalDate().isEqual(java.time.LocalDate.now())) {
+            lead.setFollowUpDate(dueDate);
+            leadRepository.save(lead);
+        }
     }
 
     @Transactional
