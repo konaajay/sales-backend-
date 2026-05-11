@@ -80,9 +80,11 @@ public class DataInitializer implements CommandLineRunner {
         seedRole("ASSOCIATE", Set.of("VIEW_LEADS", "CREATE_LEADS", "UPDATE_STATUS", "UPDATE_LEAD_STATUS", "VIEW_REPORTS", "BULK_UPLOAD"), existingPerms);
         seedRole("USER", Set.of("VIEW_LEADS"), existingPerms);
 
-        // 3. Secure Admin Creation (Using @Value)
-        if (!userRepository.existsByEmail(adminEmail)) {
-            Role adminRole = roleRepository.findByName("ADMIN").orElseThrow();
+        // 3. Secure Admin Creation & Force Update (Ensures password/scope are always synced)
+        Optional<User> existingAdmin = userRepository.findByEmail(adminEmail);
+        Role adminRole = roleRepository.findByName("ADMIN").orElseThrow();
+
+        if (existingAdmin.isEmpty()) {
             User admin = User.builder()
                     .name("System Admin")
                     .email(adminEmail)
@@ -93,24 +95,15 @@ public class DataInitializer implements CommandLineRunner {
                     .active(true)
                     .build();
             userRepository.save(admin);
-            System.out.println("Default ADMIN initialized securely from environment.");
+            System.out.println(">>> [INIT] Default ADMIN created: " + adminEmail);
         } else {
-            // Ensure existing admin has correct scope and status
-            userRepository.findByEmail(adminEmail).ifPresent(admin -> {
-                boolean changed = false;
-                if (admin.getReportScope() != ReportScope.ALL) {
-                    admin.setReportScope(ReportScope.ALL);
-                    changed = true;
-                }
-                if (!admin.isActive()) {
-                    admin.setActive(true);
-                    changed = true;
-                }
-                if (changed) {
-                    userRepository.save(admin);
-                    System.out.println("Existing ADMIN updated with correct ReportScope and status.");
-                }
-            });
+            User admin = existingAdmin.get();
+            admin.setPassword(passwordEncoder.encode(adminPassword));
+            admin.setReportScope(ReportScope.ALL);
+            admin.setActive(true);
+            admin.setRole(adminRole);
+            userRepository.save(admin);
+            System.out.println(">>> [INIT] Existing ADMIN password and scope force-synced: " + adminEmail);
         }
 
         // 4. Optimized Cleanup
