@@ -22,6 +22,9 @@ public class MailService {
     @Value("${spring.mail.username}")
     private String fromEmail;
 
+    @Value("${app.frontend-url:http://localhost:3000}")
+    private String frontendUrl;
+
     @SuppressWarnings("all")
     public void sendEmail(String to, String subject, String body) {
         System.out.println(">>> ATTEMPTING TO SEND EMAIL VIA: " + fromEmail + " TO: " + to);
@@ -72,7 +75,7 @@ public class MailService {
             "   <p style='margin:5px 0;'><strong>Username/Email:</strong> %s</p>" +
             "   <p style='margin:5px 0;'><strong>Secure Password:</strong> %s</p>" +
             "</div>" +
-            "<p style='margin-top:20px;'><a href='http://localhost:3000/login' style='background:#6366f1;color:white;padding:12px 24px;text-decoration:none;border-radius:30px;font-weight:bold;'>Access Dashboard</a></p>" +
+            "<p style='margin-top:20px;'><a href='" + frontendUrl + "/login' style='background:#6366f1;color:white;padding:12px 24px;text-decoration:none;border-radius:30px;font-weight:bold;'>Access Dashboard</a></p>" +
             "<p>Please ensure you change your password upon initial authentication for security purposes.</p>" +
             "<br/><p>Best regards,<br/>NEXUS Intelligence Cluster</p>",
             name, to, password
