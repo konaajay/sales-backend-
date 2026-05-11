@@ -550,6 +550,7 @@ public class LeadPaymentService {
             fee.setNextDueDate(nextDue);
         }
 
+        fee.setPaymentStatus(calculatePaymentStatus(fee));
         studentFeeRepository.save(fee);
 
         // All payment-related leads are CONVERTED
@@ -662,5 +663,29 @@ public class LeadPaymentService {
         }
         response.put("installments", payments);
         return response;
+    }
+
+    private String calculatePaymentStatus(StudentFee fee) {
+        if (fee == null) {
+            return "DUE";
+        }
+
+        BigDecimal balance = fee.getBalanceAmount() != null
+                ? fee.getBalanceAmount()
+                : BigDecimal.ZERO;
+
+        int paidInstallments = fee.getPaidInstallments() != null
+                ? fee.getPaidInstallments()
+                : 0;
+
+        if (balance.compareTo(BigDecimal.ZERO) <= 0) {
+            return "PAID";
+        }
+
+        if (paidInstallments <= 1) {
+            return "PRE_PAYMENT";
+        }
+
+        return "POST_PAYMENT_" + (paidInstallments - 1);
     }
 }
