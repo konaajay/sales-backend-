@@ -224,6 +224,93 @@ public class LeadPaymentService {
         }
     }
 
+    public String generatePaymentLink(Payment payment) {
+        Lead lead = leadRepository.findById(payment.getLeadId())
+                .orElseThrow(() -> new ResourceNotFoundException("Lead not found"));
+
+        String orderId = "REMI_" + payment.getId() + "_" + System.currentTimeMillis();
+        
+        com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest request = 
+            com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.builder()
+                .order_id(orderId)
+                .order_amount(payment.getAmount())
+                .order_currency("INR")
+                .customer_details(com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.CustomerDetails.builder()
+                        .customer_id("CUST_" + lead.getId())
+                        .customer_name(lead.getName())
+                        .customer_email(lead.getEmail())
+                        .customer_phone(lead.getMobile())
+                        .build())
+                .order_meta(com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.OrderMeta.builder()
+                        .return_url(frontendUrl + "/payment-status/" + orderId)
+                        .notify_url(webhookUrl != null && !webhookUrl.equals("placeholder") && !webhookUrl.isBlank() ? webhookUrl : null)
+                        .build())
+                .build();
+
+        com.lms.www.leadmanagement.dto.payment.CashfreeOrderResponse cfResponse = cashfreeService.createOrder(request);
+        
+        payment.setPaymentGatewayId(orderId);
+        payment.setUpdatedAt(LocalDateTime.now());
+        paymentRepository.save(payment);
+
+        return frontendUrl + "/payment-instruction/" + orderId;
+    }
+
+    public void sendInstallmentReminder(Payment payment) {
+        Lead lead = leadRepository.findById(payment.getLeadId())
+                .orElseThrow(() -> new ResourceNotFoundException("Lead not found"));
+
+        String paymentUrl = generatePaymentLink(payment);
+        
+        String subject = "Payment Reminder: Installment Due for " + lead.getName();
+        
+        StudentFee fee = studentFeeRepository.findByLeadId(lead.getId()).orElse(null);
+        BigDecimal balance = (fee != null) ? fee.getBalanceAmount() : BigDecimal.ZERO;
+
+        String body = String.format(
+                "<div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden;'>" +
+                "  <div style='background: #1e293b; color: white; padding: 30px; text-align: center;'>" +
+                "    <h2 style='margin: 0; text-transform: uppercase; letter-spacing: 2px;'>Installment Reminder</h2>" +
+                "    <p style='margin: 10px 0 0; opacity: 0.9;'>Payment due for your enrollment</p>" +
+                "  </div>" +
+                "  <div style='padding: 40px; line-height: 1.6; color: #1e293b;'>" +
+                "    <p>Hello <strong>%s</strong>,</p>" +
+                "    <p>This is a reminder that your next installment of <strong>₹%s</strong> is due.</p>" +
+                "    " +
+                "    <div style='background: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;'>" +
+                "       <table style='width: 100%%; font-size: 14px;'>" +
+                "           <tr><td style='color: #64748b;'>Installment Amount:</td><td style='text-align: right; font-weight: bold;'>₹%s</td></tr>" +
+                "           <tr><td style='color: #64748b;'>Due Date:</td><td style='text-align: right; font-weight: bold;'>%s</td></tr>" +
+                "           <tr><td style='color: #64748b;'>Remaining Balance:</td><td style='text-align: right; font-weight: bold;'>₹%s</td></tr>" +
+                "       </table>" +
+                "    </div>" +
+                "    " +
+                "    <div style='margin: 30px 0; text-align: center;'>" +
+                "      <a href='%s' style='background-color: #3b82f6; color: white; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;'>PAY INSTALLMENT SECURELY</a>" +
+                "    </div>" +
+                "    " +
+                "    <p style='font-size: 14px; color: #64748b;'>Copy link: %s</p>" +
+                "    " +
+                "    <div style='border-top: 1px solid #f1f5f9; margin-top: 30px; padding-top: 20px; font-size: 12px; color: #94a3b8;'>" +
+                "      Thank you for staying on track with your education journey." +
+                "    </div>" +
+                "  </div>" +
+                "</div>",
+                lead.getName(), payment.getAmount(), payment.getAmount(), 
+                payment.getDueDate() != null ? payment.getDueDate().toLocalDate() : "N/A",
+                balance, paymentUrl, paymentUrl);
+
+        if (lead.getEmail() != null && !lead.getEmail().isBlank()) {
+            mailService.sendEmail(lead.getEmail(), subject, body);
+        }
+        
+        payment.setReminderSent(true);
+        paymentRepository.save(payment);
+        
+        // Update task status or create a new follow-up if needed
+        createLeadTask(lead, LocalDateTime.now(), "Installment Reminder Sent - ₹" + payment.getAmount(), "EMI_COLLECTION");
+    }
+
     @Transactional
     public void markAsPaid(Long leadId) {
         Lead lead = leadRepository.findById(leadId)

@@ -46,6 +46,7 @@ public class Payment {
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private boolean reminderSent = false;
 
     @PrePersist
     protected void onCreate() {
