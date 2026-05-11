@@ -95,7 +95,7 @@ public class CallLogService {
             // 4. Sync Lead State if associated
             if (lead != null && status != null && !status.isEmpty()) {
                 try {
-                    lead.setStatus(com.lms.www.leadmanagement.entity.LeadStatus.fromString(status));
+                    lead.setStatus(status);
                     lead.setName(note);
                     lead.setUpdatedBy(user);
                     leadRepository.save(lead);

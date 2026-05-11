@@ -52,6 +52,22 @@ public class LeadPaymentService {
             throw new InvalidRequestException("Minimum payment amount is ₹" + minAmount);
         }
 
+        // --- STRICT ACCOUNTING VALIDATION ---
+        BigDecimal finalSettlement = (totalAmount != null ? totalAmount : BigDecimal.ZERO)
+                .subtract(discount != null ? discount : BigDecimal.ZERO);
+        
+        BigDecimal totalPlanned = amount;
+        if (plannedInstallments != null) {
+            for (Map<String, Object> inst : plannedInstallments) {
+                totalPlanned = totalPlanned.add(new BigDecimal(inst.get("amount").toString()));
+            }
+        }
+
+        if (finalSettlement.compareTo(BigDecimal.ZERO) > 0 && totalPlanned.compareTo(finalSettlement) != 0) {
+            throw new InvalidRequestException("Accounting Protocol Violation: Planned amount (\u20B9" + totalPlanned + ") does not match Final Settlement (\u20B9" + finalSettlement + ")");
+        }
+        // ------------------------------------
+
         String orderId = "ORDER_" + leadId + "_" + System.currentTimeMillis();
         
         com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest request = 
@@ -67,7 +83,7 @@ public class LeadPaymentService {
                         .build())
                 .order_meta(com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.OrderMeta.builder()
                         .return_url(frontendUrl + "/payment-status/" + orderId)
-                        .notify_url(webhookUrl)
+                        .notify_url(webhookUrl != null && !webhookUrl.equals("placeholder") && !webhookUrl.isBlank() ? webhookUrl : null)
                         .build())
                 .build();
 
@@ -93,7 +109,14 @@ public class LeadPaymentService {
                 totalCommitment = totalCommitment.add(instAmount);
                 
                 String dueStr = (String) inst.get("dueDate");
-                LocalDateTime dueDate = dueStr != null ? LocalDateTime.parse(dueStr.contains("T") ? dueStr : dueStr + "T10:00:00") : null;
+                LocalDateTime dueDate = null;
+                if (dueStr != null && !dueStr.isBlank()) {
+                    try {
+                        dueDate = LocalDateTime.parse(dueStr.contains("T") ? dueStr : dueStr + "T10:00:00");
+                    } catch (Exception e) {
+                        log.warn(">>> Failed to parse due date: {}. Using null.", dueStr);
+                    }
+                }
                 if (firstInstallmentDate == null) firstInstallmentDate = dueDate;
 
                 paymentRepository.save(Payment.builder()
@@ -188,7 +211,13 @@ public class LeadPaymentService {
                 "</div>",
                 lead.getName(), amount, paymentUrl, paymentUrl, orderId);
 
-        mailService.sendEmail(lead.getEmail(), subject, body);
+        if (lead.getEmail() != null && !lead.getEmail().isBlank()) {
+            try {
+                mailService.sendEmail(lead.getEmail(), subject, body);
+            } catch (Exception e) {
+                log.error(">>> Email Delivery Failed: {}", e.getMessage());
+            }
+        }
     }
 
     @Transactional
@@ -196,7 +225,7 @@ public class LeadPaymentService {
         Lead lead = leadRepository.findById(leadId)
                 .orElseThrow(() -> new ResourceNotFoundException("Lead not found"));
 
-        lead.setStatus(LeadStatus.CONVERTED);
+        lead.setStatus("CONVERTED");
         leadRepository.save(lead);
 
         log.info(">>> Lead {} manually marked as PAID/CONVERTED", lead.getEmail());
@@ -234,7 +263,13 @@ public class LeadPaymentService {
                 (payment.getPaymentMethod() != null ? payment.getPaymentMethod() : "MANUAL"));
         
         // Async dispatch
-        mailService.sendEmail(lead.getEmail(), subject, body);
+        if (lead.getEmail() != null && !lead.getEmail().isBlank()) {
+            try {
+                mailService.sendEmail(lead.getEmail(), subject, body);
+            } catch (Exception e) {
+                log.error(">>> Email Delivery Failed for Invoice: {}", e.getMessage());
+            }
+        }
     }
 
     @Transactional(readOnly = true)
@@ -391,7 +426,7 @@ public class LeadPaymentService {
 
         // AUTO-STATUS LOGIC: The initial token payment successfully secures the enrollment.
         // Convert the lead immediately. The StudentFee ledger will handle remaining EMI tracking.
-        lead.setStatus(LeadStatus.CONVERTED);
+        lead.setStatus("CONVERTED");
         leadRepository.save(lead);
     }
 
@@ -477,6 +512,7 @@ public class LeadPaymentService {
                         .totalAmount(totalAmount != null ? totalAmount : paidAmount)
                         .paidAmount(BigDecimal.ZERO)
                         .balanceAmount(totalAmount != null ? totalAmount : paidAmount)
+                        .paidInstallments(0)
                         .build());
 
         // Update Total Amount if passed
@@ -492,6 +528,16 @@ public class LeadPaymentService {
         BigDecimal currentPaid = fee.getPaidAmount() != null ? fee.getPaidAmount() : BigDecimal.ZERO;
         fee.setPaidAmount(currentPaid.add(paidAmount));
         
+        // Calculate Installments
+        List<Payment> allPayments = paymentRepository.findByLeadId(lead.getId());
+        int total = allPayments.size();
+        int paidCount = (int) allPayments.stream()
+                .filter(p -> p.getStatus() == Payment.Status.PAID || p.getStatus() == Payment.Status.SUCCESS)
+                .count();
+
+        fee.setTotalInstallments(total);
+        fee.setPaidInstallments(paidCount);
+
         if (fee.getTotalAmount() != null) {
             BigDecimal netTotal = fee.getTotalAmount().subtract(fee.getDiscount() != null ? fee.getDiscount() : BigDecimal.ZERO);
             fee.setBalanceAmount(netTotal.subtract(fee.getPaidAmount()));
@@ -499,7 +545,14 @@ public class LeadPaymentService {
         if (nextDue != null) {
             fee.setNextDueDate(nextDue);
         }
+
         studentFeeRepository.save(fee);
+
+        // All payment-related leads are CONVERTED
+        if (!"CONVERTED".equalsIgnoreCase(lead.getStatus())) {
+            lead.setStatus("CONVERTED");
+            leadRepository.save(lead);
+        }
     }
 
     private PaymentDTO convertToDTO(Payment payment) {

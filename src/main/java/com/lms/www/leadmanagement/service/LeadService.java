@@ -128,15 +128,25 @@ public class LeadService {
             throw new InvalidRequestException("Lead already exists");
 
         User creator = securityService.getCurrentUser();
+        
+        // AUTO-ASSIGNMENT PROTOCOL: If an Associate adds a lead, they OWN it immediately.
+        User assignedTo = null;
+        String status = "NEW";
+        
+        if (creator.getRole().getName().equalsIgnoreCase("ASSOCIATE")) {
+            assignedTo = creator;
+            status = "WORKING"; // Associates start in WORKING mode
+        }
+
         Lead lead = Lead.builder()
                 .name(dto.getName())
                 .email(dto.getEmail())
                 .mobile(dto.getMobile())
                 .college(dto.getCollege())
-                .status(LeadStatus.NEW)
+                .status(status)
                 .course(dto.getCourseId() != null ? courseRepository.findById(dto.getCourseId()).orElse(null) : null)
                 .createdBy(creator)
-                .assignedTo(null)
+                .assignedTo(assignedTo)
                 .build();
 
         return convertToDTO(leadRepository.save(lead));
@@ -155,8 +165,8 @@ public class LeadService {
                 securityService.validateAccess(user, lead.getCreatedBy().getId());
             }
         }
-        LeadStatus currentStatus = lead.getStatus() != null ? lead.getStatus() : LeadStatus.NEW;
-        if (List.of(LeadStatus.PAID, LeadStatus.SUCCESS, LeadStatus.EMI, LeadStatus.CONVERTED).contains(currentStatus)) {
+        String currentStatus = lead.getStatus() != null ? lead.getStatus() : "NEW";
+        if (List.of("PAID", "SUCCESS", "EMI", "CONVERTED").contains(currentStatus.toUpperCase())) {
             throw new InvalidRequestException("Cannot change status of a finalized lead");
         }
 
@@ -164,32 +174,33 @@ public class LeadService {
             courseRepository.findById(request.getCourseId()).ifPresent(lead::setCourse);
         }
 
-        LeadStatus status = LeadStatus.fromString(request.getStatus());
+        String status = request.getStatus();
+        if (status == null) status = "NEW";
         
-        if (LeadStatus.CONVERTED.equals(status)) {
+        if ("CONVERTED".equalsIgnoreCase(status)) {
             throw new InvalidRequestException("Manual conversion restricted. Leads can only be marked as CONVERTED via successful payment processing.");
         }
 
-        if (!currentStatus.equals(status)) {
-            StringBuilder sb = new StringBuilder(status.name());
+        if (!currentStatus.equalsIgnoreCase(status)) {
+            StringBuilder sb = new StringBuilder(status);
             if (request.getNote() != null && !request.getNote().trim().isEmpty()) {
                 sb.append("\n\nNote: ").append(request.getNote());
             }
             if (request.getDueDate() != null && !request.getDueDate().trim().isEmpty()) {
                 sb.append("\nFollow-up: ").append(request.getDueDate().replace("T", " "));
             }
-            recordAuditLog(lead.getId(), user, "STATUS", currentStatus.name(), sb.toString(), "STATUS_CHANGE");
+            recordAuditLog(lead.getId(), user, "STATUS", currentStatus, sb.toString(), "STATUS_CHANGE");
         }
 
         lead.setStatus(status);
         lead.setUpdatedBy(user);
 
-        if (LeadStatus.CONVERTED.equals(status)) {
+        if ("CONVERTED".equalsIgnoreCase(status)) {
             initializeStudentFee(lead, request);
         }
 
-        saveNote(lead, user, request.getNote(), status.name(), true);
-        triggerPipelineActions(lead, status.name(), request);
+        saveNote(lead, user, request.getNote(), status, true);
+        triggerPipelineActions(lead, status, request);
         
         return convertToDTO(leadRepository.save(lead));
     }
@@ -389,7 +400,6 @@ public class LeadService {
             }
 
             lead.setAssignedTo(null);
-            lead.setStatus(LeadStatus.NEW);
             recordAuditLog(lead.getId(), requester, "ASSIGNMENT", oldVal, "UNASSIGNED", "ASSIGNMENT_CHANGE");
         } else {
             // ASSIGNING PATH
@@ -404,7 +414,7 @@ public class LeadService {
             log.info("[ASSIGN] User {} (isTL: {}) attempting to assign Lead #{} to User {}. currentCount: {}", 
                 requester.getEmail(), isTL, leadId, userId, lead.getReassignmentCount());
 
-            if (isChanging && isTL && lead.getStatus() != LeadStatus.NEW) {
+            if (isChanging && isTL && !"NEW".equalsIgnoreCase(lead.getStatus())) {
                 int currentCount = lead.getReassignmentCount() != null ? lead.getReassignmentCount() : 0;
                 log.info("[COUNT-CHECK] Lead #{} current actions: {}", leadId, currentCount);
                 if (currentCount >= 2) {
@@ -418,9 +428,9 @@ public class LeadService {
             lead.setAssignedTo(target);
             recordAuditLog(lead.getId(), requester, "ASSIGNMENT", oldVal, target.getName(), "ASSIGNMENT_CHANGE");
             // Reset status to NEW upon assignment unless it's already finalized
-            LeadStatus currentStatus = lead.getStatus() != null ? lead.getStatus() : LeadStatus.NEW;
-            if (!List.of(LeadStatus.PAID, LeadStatus.SUCCESS, LeadStatus.EMI, LeadStatus.CONVERTED).contains(currentStatus)) {
-                lead.setStatus(LeadStatus.NEW);
+            String currentStatus = lead.getStatus() != null ? lead.getStatus() : "NEW";
+            if (!List.of("PAID", "SUCCESS", "EMI", "CONVERTED").contains(currentStatus.toUpperCase())) {
+                lead.setStatus("NEW");
             }
         }
         return convertToDTO(leadRepository.save(lead));
@@ -443,7 +453,7 @@ public class LeadService {
             boolean isChanging = (finalTarget == null && l.getAssignedTo() != null) || 
                                (finalTarget != null && (l.getAssignedTo() == null || !l.getAssignedTo().getId().equals(finalTarget.getId())));
 
-            if (isChanging && securityService.isTeamLeader(requester) && l.getStatus() != LeadStatus.NEW) {
+            if (isChanging && securityService.isTeamLeader(requester) && !"NEW".equalsIgnoreCase(l.getStatus())) {
                 int currentCount = l.getReassignmentCount() != null ? l.getReassignmentCount() : 0;
                 if (currentCount >= 2) {
                     throw new InvalidRequestException("Bulk action failed for Lead #" + l.getId() + ": Maximum transfer limit reached (1 assignment + 1 reassignment).");
@@ -453,9 +463,9 @@ public class LeadService {
 
             l.setAssignedTo(finalTarget);
             // Reset status to NEW upon bulk assignment unless it's already finalized
-            LeadStatus currentStatus = l.getStatus() != null ? l.getStatus() : LeadStatus.NEW;
-            if (!List.of(LeadStatus.PAID, LeadStatus.SUCCESS, LeadStatus.EMI, LeadStatus.CONVERTED).contains(currentStatus)) {
-                l.setStatus(LeadStatus.NEW);
+            String currentStatus = l.getStatus() != null ? l.getStatus() : "NEW";
+            if (!List.of("PAID", "SUCCESS", "EMI", "CONVERTED").contains(currentStatus.toUpperCase())) {
+                l.setStatus("NEW");
             }
         });
         return leadRepository.saveAll(leads).stream().map(l -> convertToDTO(l)).collect(Collectors.toList());
@@ -463,7 +473,19 @@ public class LeadService {
 
     private LeadDTO convertToDTO(Lead lead) {
         LeadDTO dto = LeadDTO.fromEntity(lead);
-        // Optimization: Lazy check or bulk fetch if needed for large lists
+        
+        // Fetch granular payment progress if it exists
+        studentFeeRepository.findByLeadId(lead.getId()).ifPresent(fee -> {
+            dto.setPaymentStatus(fee.getPaymentStatus());
+            dto.setTotalAmount(fee.getTotalAmount());
+            dto.setPaidAmount(fee.getPaidAmount());
+            dto.setBalanceAmount(fee.getBalanceAmount());
+            dto.setDiscount(fee.getDiscount());
+            dto.setTotalInstallments(fee.getTotalInstallments());
+            dto.setPaidInstallments(fee.getPaidInstallments());
+            dto.setNextPaymentDueDate(fee.getNextDueDate());
+        });
+
         return dto;
     }
 
@@ -567,7 +589,7 @@ public class LeadService {
     @Transactional
     public LeadDTO rejectLead(Long id, Map<String, Object> data) {
         Lead lead = leadRepository.findById(id).orElseThrow();
-        lead.setStatus(LeadStatus.REJECTED);
+        lead.setStatus("REJECTED");
         return convertToDTO(leadRepository.save(lead));
     }
 
@@ -583,7 +605,7 @@ public class LeadService {
     public LeadDTO updateNote(Long id, String note) {
         Lead lead = leadRepository.findById(id).orElseThrow();
         User user = securityService.getCurrentUser();
-        saveNote(lead, user, note, lead.getStatus() != null ? lead.getStatus().name() : "NEW", false);
+        saveNote(lead, user, note, lead.getStatus() != null ? lead.getStatus() : "NEW", false);
         return convertToDTO(lead);
     }
 

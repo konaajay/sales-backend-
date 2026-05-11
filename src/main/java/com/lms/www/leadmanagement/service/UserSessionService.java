@@ -45,9 +45,9 @@ public class UserSessionService {
             UserSession session = sessionOpt.get();
             LocalDateTime now = LocalDateTime.now(INDIA_ZONE);
             
-            // 15-minute inactivity check
+            // 30-minute inactivity check
             if (session.getLastActivity() != null && 
-                session.getLastActivity().plusMinutes(15).isBefore(now)) {
+                session.getLastActivity().plusMinutes(30).isBefore(now)) {
                 session.setStatus("INACTIVE");
                 session.setLogoutTime(now);
                 userSessionRepository.save(session);
@@ -75,7 +75,7 @@ public class UserSessionService {
     @Transactional
     public void autoLogoutStaleSessions() {
         LocalDateTime now = LocalDateTime.now(INDIA_ZONE);
-        LocalDateTime cutoff = now.minusMinutes(15);
+        LocalDateTime cutoff = now.minusMinutes(30);
         int closed = userSessionRepository.closeIdleSessions(cutoff, now);
         if (closed > 0) {
             System.out.println("Auto-logged out " + closed + " idle sessions.");

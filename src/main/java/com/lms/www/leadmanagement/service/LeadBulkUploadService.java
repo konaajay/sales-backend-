@@ -34,7 +34,7 @@ public class LeadBulkUploadService {
     @Autowired
     private SecurityService securityService;
 
-    @PreAuthorize("hasAuthority('CREATE_LEADS')")
+    @PreAuthorize("hasAnyAuthority('CREATE_LEADS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_ASSOCIATE', 'ASSOCIATE')")
     public BulkUploadResponseDTO uploadLeads(MultipartFile file, String assignedToIds) {
         int total = 0;
         int success = 0;
@@ -121,8 +121,13 @@ public class LeadBulkUploadService {
                         finalAssignee = assignees.get(assigneeIndex % assignees.size());
                         assigneeIndex++;
                     } else {
-                        // FORCE AUTO-ASSIGNMENT: Assign to self if no other assignees are specified
-                        finalAssignee = creator;
+                        // ROLE-BASED AUTO-ASSIGNMENT: 
+                        // Associates own their leads. Admins/Managers/TLs leave them unassigned for redistribution.
+                        if (creator.getRole().getName().equalsIgnoreCase("ASSOCIATE")) {
+                            finalAssignee = creator;
+                        } else {
+                            finalAssignee = null;
+                        }
                     }
 
                     // Duplicate Check
@@ -145,7 +150,7 @@ public class LeadBulkUploadService {
                                 .email(email == null || email.isEmpty() ? null : email)
                                 .mobile(mobile)
                                 .college(college == null || college.isEmpty() ? null : college)
-                                .status(com.lms.www.leadmanagement.entity.LeadStatus.WORKING)
+                                .status(finalAssignee != null ? "WORKING" : "NEW")
                                 .createdBy(creator)
                                 .assignedTo(finalAssignee)
                                 .build();

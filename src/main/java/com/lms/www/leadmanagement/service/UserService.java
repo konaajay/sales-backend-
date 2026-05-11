@@ -51,6 +51,11 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
+    public UserDTO getUserById(Long id) {
+        return UserDTO.fromEntity(findById(id));
+    }
+
+    @Transactional(readOnly = true)
     public Page<UserDTO> getAuthorizedUsers(Pageable pageable) {
         User requester = securityService.getCurrentUser();
         java.util.Set<Long> allowedIds = securityService.getAllowedUserIds(requester);

@@ -106,6 +106,8 @@ public class WebSecurityConfig {
         config.setAllowedOriginPatterns(List.of(
                 "http://localhost:[*]",
                 "http://127.0.0.1:[*]",
+                "http://54.84.148.176:[*]",
+                "http://54.84.148.176",
                 "http://100.85.146.60:[*]",
                 "https://*.netlify.app",
                 "https://salessa.netlify.app",

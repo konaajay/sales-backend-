@@ -113,7 +113,7 @@ public class CallTrackingService {
         if (record.getLead() != null) {
             Lead lead = record.getLead();
             try {
-                lead.setStatus(com.lms.www.leadmanagement.entity.LeadStatus.fromString(dto.getStatus()));
+                lead.setStatus(dto.getStatus());
             } catch (Exception e) {
                 // Ignore invalid status enum mappings if they don't match exactly
             }

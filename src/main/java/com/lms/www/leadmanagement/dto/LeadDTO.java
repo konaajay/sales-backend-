@@ -30,6 +30,12 @@ public class LeadDTO {
     private String followUpType;
     private LocalDateTime nextPaymentDueDate;
     private String paymentStatus;
+    private java.math.BigDecimal totalAmount;
+    private java.math.BigDecimal paidAmount;
+    private java.math.BigDecimal balanceAmount;
+    private java.math.BigDecimal discount;
+    private Integer totalInstallments;
+    private Integer paidInstallments;
     @JsonProperty("hasOverdueTask")
     private boolean hasOverdueTask;
     @JsonProperty("taskDueToday")
@@ -51,7 +57,7 @@ public class LeadDTO {
                 .mobile(lead.getMobile())
                 .college(lead.getCollege())
 
-                .status(lead.getStatus() != null ? lead.getStatus().name() : "NEW")
+                .status(lead.getStatus() != null ? lead.getStatus() : "NEW")
                 .assignedToId(lead.getAssignedTo() != null ? lead.getAssignedTo().getId() : null)
                 .assignedToName(lead.getAssignedTo() != null ? lead.getAssignedTo().getName() : null)
                 .followUpRequired(lead.getFollowUpRequired())

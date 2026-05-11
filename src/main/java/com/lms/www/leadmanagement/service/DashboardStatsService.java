@@ -158,31 +158,23 @@ public class DashboardStatsService {
                     .expectedRevenue(BigDecimal.ZERO).monthlyTarget(BigDecimal.ZERO).targetAchievement(0.0).build();
         }
 
-        List<LeadStatus> sS = pipelineStageRepository.findByAnalyticBucketIn(List.of("SUCCESS", "CONVERTED", "PAID"))
-                .stream().map(s -> LeadStatus.fromString(s.getStatusValue())).collect(Collectors.toList());
-        if (sS.isEmpty())
-            sS = List.of(LeadStatus.CONVERTED, LeadStatus.PAID, LeadStatus.SUCCESS);
-        final List<LeadStatus> successStatuses = Collections.unmodifiableList(sS);
+        List<String> dbSuccess = pipelineStageRepository.findByAnalyticBucketIn(List.of("SUCCESS", "CONVERTED", "PAID"))
+                .stream().map(PipelineStage::getStatusValue).collect(Collectors.toList());
+        final List<String> successStatuses = dbSuccess.isEmpty() ? List.of("CONVERTED", "PAID", "SUCCESS") : dbSuccess;
 
-        List<LeadStatus> lS = pipelineStageRepository
+        List<String> dbLost = pipelineStageRepository
                 .findByAnalyticBucketIn(List.of("LOST", "NOT_INTERESTED", "REJECTED")).stream()
-                .map(s -> LeadStatus.fromString(s.getStatusValue())).collect(Collectors.toList());
-        if (lS.isEmpty())
-            lS = List.of(LeadStatus.LOST, LeadStatus.NOT_INTERESTED, LeadStatus.REJECTED);
-        final List<LeadStatus> lostStatuses = Collections.unmodifiableList(lS);
-
-        List<LeadStatus> iS = pipelineStageRepository
-                .findByAnalyticBucketIn(List.of("INTERESTED", "UNDER_REVIEW", "FOLLOWUP", "WORKING")).stream()
-                .map(s -> LeadStatus.fromString(s.getStatusValue())).collect(Collectors.toList());
-        if (iS.isEmpty())
-            iS = List.of(LeadStatus.INTERESTED, LeadStatus.UNDER_REVIEW, LeadStatus.FOLLOW_UP, LeadStatus.WORKING);
-        final List<LeadStatus> interestedStatuses = Collections.unmodifiableList(iS);
-
-        List<String> dbS = pipelineStageRepository.findByActiveTrueOrderByOrderIndexAsc().stream()
                 .map(PipelineStage::getStatusValue).collect(Collectors.toList());
-        final List<LeadStatus> activeStatuses = dbS.isEmpty()
-                ? List.of(LeadStatus.NEW, LeadStatus.CONTACTED, LeadStatus.FOLLOW_UP)
-                : dbS.stream().map(LeadStatus::fromString).collect(Collectors.toList());
+        final List<String> lostStatuses = dbLost.isEmpty() ? List.of("LOST", "NOT_INTERESTED", "REJECTED") : dbLost;
+
+        List<String> dbInterested = pipelineStageRepository
+                .findByAnalyticBucketIn(List.of("INTERESTED", "UNDER_REVIEW", "FOLLOWUP", "WORKING")).stream()
+                .map(PipelineStage::getStatusValue).collect(Collectors.toList());
+        final List<String> interestedStatuses = dbInterested.isEmpty() ? List.of("INTERESTED", "UNDER_REVIEW", "FOLLOW_UP", "WORKING") : dbInterested;
+
+        List<String> dbActive = pipelineStageRepository.findByActiveTrueOrderByOrderIndexAsc().stream()
+                .map(PipelineStage::getStatusValue).collect(Collectors.toList());
+        final List<String> activeStatuses = dbActive.isEmpty() ? List.of("NEW", "CONTACTED", "FOLLOW_UP") : dbActive;
 
         CompletableFuture<Long> activeLoadFuture = safeAsync(
                 () -> isGlobalAdmin ? leadRepository.countByCreatedAtBetween(start, end)

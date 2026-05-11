@@ -78,18 +78,25 @@ public class PaymentController {
     @PostMapping("/api/payments/cashfree/create-order")
     @PreAuthorize("hasAuthority('UPDATE_LEAD_STATUS') or hasAuthority('ADMIN') or hasAuthority('MANAGER')")
     public ResponseEntity<Map<String, String>> createCashfreeOrder(@RequestBody Map<String, Object> payload) {
+        if (payload.get("leadId") == null || payload.get("leadId").toString().isBlank()) {
+            throw new IllegalArgumentException("Lead ID is required");
+        }
+        if (payload.get("amount") == null || payload.get("amount").toString().isBlank()) {
+            throw new IllegalArgumentException("Amount is required");
+        }
+
         Long leadId = Long.valueOf(payload.get("leadId").toString());
         java.math.BigDecimal amount = new java.math.BigDecimal(payload.get("amount").toString());
         String type = (String) payload.get("type");
         List<Map<String, Object>> installments = (List<Map<String, Object>>) payload.get("installments");
         
         java.math.BigDecimal totalAmount = null;
-        if (payload.containsKey("totalAmount") && payload.get("totalAmount") != null) {
+        if (payload.containsKey("totalAmount") && payload.get("totalAmount") != null && !payload.get("totalAmount").toString().isBlank()) {
             totalAmount = new java.math.BigDecimal(payload.get("totalAmount").toString());
         }
 
         java.math.BigDecimal discount = null;
-        if (payload.containsKey("discount") && payload.get("discount") != null) {
+        if (payload.containsKey("discount") && payload.get("discount") != null && !payload.get("discount").toString().isBlank()) {
             discount = new java.math.BigDecimal(payload.get("discount").toString());
         }
         

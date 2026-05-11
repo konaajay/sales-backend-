@@ -96,4 +96,25 @@ public class MailService {
         );
         sendEmail(to, subject, body);
     }
+
+    public void sendOverdueReminder(String to, String name, java.math.BigDecimal amount, String dueDate) {
+        String subject = "Urgent: Payment Overdue Notice for Your Admission";
+        String body = String.format(
+            "<div style='font-family:sans-serif;max-width:600px;margin:0 auto;'>" +
+            "   <h2 style='color:#dc2626;'>Payment Overdue Notification</h2>" +
+            "   <p>Hello %s,</p>" +
+            "   <p>This is a reminder that your installment of <strong>₹%s</strong> was due on <strong>%s</strong> and remains unpaid.</p>" +
+            "   <div style='background:#fff1f2;padding:20px;border-left:4px solid #dc2626;border-radius:8px;margin:20px 0;'>" +
+            "       <p style='margin:0;color:#991b1b;'><strong>Status:</strong> OVERDUE</p>" +
+            "       <p style='margin:5px 0;color:#991b1b;'><strong>Amount Due:</strong> ₹%s</p>" +
+            "       <p style='margin:5px 0;color:#991b1b;'><strong>Original Due Date:</strong> %s</p>" +
+            "   </div>" +
+            "   <p>Please complete your payment at the earliest to ensure your admission remains active and avoid any disruption to your course access.</p>" +
+            "   <p>If you have already made the payment, please ignore this email or contact your counselor for confirmation.</p>" +
+            "   <br/><p>Best regards,<br/>LMS Admissions Team</p>" +
+            "</div>",
+            name, amount, dueDate, amount, dueDate
+        );
+        sendEmail(to, subject, body);
+    }
 }

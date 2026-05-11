@@ -30,7 +30,10 @@ public class StudentFee {
     private BigDecimal balanceAmount;
 
     private LocalDateTime nextDueDate;
-    private String paymentStatus; // PENDING, PARTIAL, COMPLETED
+    private String paymentStatus; 
+    
+    private Integer totalInstallments;
+    private Integer paidInstallments;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -52,15 +55,25 @@ public class StudentFee {
 
     private void updateStatus() {
         if (totalAmount == null || totalAmount.compareTo(BigDecimal.ZERO) == 0) {
-            paymentStatus = "AUDIT";
+            paymentStatus = "DUE";
             return;
         }
-        if (paidAmount.compareTo(totalAmount) >= 0) {
-            paymentStatus = "COMPLETED";
-        } else if (paidAmount.compareTo(BigDecimal.ZERO) > 0) {
-            paymentStatus = "PARTIAL";
-        } else {
-            paymentStatus = "PENDING";
+
+        // 1. If pending amount is zero -> PAID
+        if (balanceAmount != null && balanceAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            paymentStatus = "PAID";
+        } 
+        // 2. If no payments made yet -> DUE
+        else if (paidInstallments == null || paidInstallments == 0) {
+            paymentStatus = "DUE";
+        } 
+        // 3. If only initial commitment paid (and there are more to come) -> PRE_PAYMENT
+        else if (paidInstallments == 1 && (totalInstallments != null && totalInstallments > 1)) {
+            paymentStatus = "PRE_PAYMENT";
+        } 
+        // 4. Multiple installments or progress tracking -> POST_PAYMENT_X
+        else {
+            paymentStatus = "POST_PAYMENT_" + paidInstallments;
         }
     }
 }

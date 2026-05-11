@@ -61,8 +61,10 @@ public class AttendanceService {
                 .min(Comparator.comparingDouble(o -> calculateDistance(request.getLat(), request.getLng(), o.getLatitude(), o.getLongitude())))
                 .orElseThrow(() -> new RuntimeException("No office locations configured."));
 
-        if (!wfh && calculateDistance(request.getLat(), request.getLng(), office.getLatitude(), office.getLongitude()) > office.getRadius()) {
-            throw new RuntimeException("PUNCH DENIED: You are outside the office radius and do not have WFH approval.");
+        double distance = calculateDistance(request.getLat(), request.getLng(), office.getLatitude(), office.getLongitude());
+        if (!wfh && distance > office.getRadius()) {
+            String distStr = distance > 1000 ? String.format("%.2f km", distance/1000.0) : String.format("%.0f meters", distance);
+            throw new RuntimeException("PUNCH DENIED: You are " + distStr + " away from the office radius (" + office.getRadius() + "m). You do not have WFH approval.");
         }
 
         AttendancePolicy policy = policyRepository.findByOfficeId(office.getId()).orElseGet(() -> AttendancePolicy.builder().office(office).build());
@@ -176,8 +178,23 @@ public class AttendanceService {
 
     @Transactional
     public Optional<AttendanceDTO> getCurrentStatus(Long userId) {
-        return sessionRepository.findActiveSession(userId, List.of(AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK, AttendanceStatus.AUTO_BREAK, AttendanceStatus.OUTSIDE))
-                .map(s -> mapToDTO(s, todayInIndia()));
+        Optional<AttendanceSession> session = sessionRepository.findActiveSession(userId, List.of(AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK, AttendanceStatus.AUTO_BREAK, AttendanceStatus.OUTSIDE));
+        
+        if (session.isPresent()) {
+            return Optional.of(mapToDTO(session.get(), todayInIndia()));
+        } else {
+            // Return off-duty status but WITH office info for distance calculation
+            OfficeLocation office = officeRepository.findAll().stream().findFirst().orElse(null);
+            return Optional.of(AttendanceDTO.builder()
+                    .userId(userId)
+                    .status("NOT_STARTED")
+                    .officeLat(office != null ? office.getLatitude() : null)
+                    .officeLng(office != null ? office.getLongitude() : null)
+                    .officeRadius(office != null ? office.getRadius() : 30.0)
+                    .officeName(office != null ? office.getName() : null)
+                    .isWfhApproved(isWfhApproved(userId))
+                    .build());
+        }
     }
 
     @Transactional

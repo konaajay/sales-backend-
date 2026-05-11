@@ -138,7 +138,7 @@ public class ReportService {
 
         // Fetch daily lost counts
         List<Map<String, Object>> lostTrend;
-        List<com.lms.www.leadmanagement.entity.LeadStatus> lostStatuses = List.of(com.lms.www.leadmanagement.entity.LeadStatus.LOST, com.lms.www.leadmanagement.entity.LeadStatus.NOT_INTERESTED, com.lms.www.leadmanagement.entity.LeadStatus.REJECTED);
+        List<String> lostStatuses = List.of("LOST", "NOT_INTERESTED", "REJECTED");
         if (userIds != null) {
             lostTrend = userIds.isEmpty() ? new ArrayList<>() : leadRepository.getDailyLostTrendByIds(userIds, lostStatuses, start, end);
         } else {
@@ -147,7 +147,7 @@ public class ReportService {
 
         // Fetch daily converted counts
         List<Map<String, Object>> convertedTrend;
-        List<com.lms.www.leadmanagement.entity.LeadStatus> successStatuses = List.of(com.lms.www.leadmanagement.entity.LeadStatus.CONVERTED, com.lms.www.leadmanagement.entity.LeadStatus.PAID, com.lms.www.leadmanagement.entity.LeadStatus.EMI, com.lms.www.leadmanagement.entity.LeadStatus.SUCCESS);
+        List<String> successStatuses = List.of("CONVERTED", "PAID", "EMI", "SUCCESS");
         if (userIds != null) {
             convertedTrend = userIds.isEmpty() ? new ArrayList<>() : leadRepository.getDailyConvertedTrendByIds(userIds, successStatuses, start, end);
         } else {

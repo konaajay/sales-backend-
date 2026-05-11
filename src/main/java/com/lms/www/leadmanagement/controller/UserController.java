@@ -35,6 +35,12 @@ public class UserController {
         return ResponseEntity.ok(adminService.createUser(userDTO));
     }
 
+    @PreAuthorize("hasAnyAuthority('MANAGE_USERS', 'ROLE_MANAGER', 'ROLE_TEAM_LEADER', 'MANAGER', 'TEAM_LEADER')")
+    @GetMapping("/{id}")
+    public ResponseEntity<UserDTO> getUserById(@PathVariable Long id) {
+        return ResponseEntity.ok(userService.getUserById(id));
+    }
+
     @PreAuthorize("hasAuthority('MANAGE_USERS')")
     @PutMapping("/{id}")
     public ResponseEntity<UserDTO> updateUser(@PathVariable Long id, @RequestBody UserDTO userDTO) {
