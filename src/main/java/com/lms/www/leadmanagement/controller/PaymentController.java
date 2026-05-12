@@ -110,7 +110,7 @@ public class PaymentController {
     }
 
     @PostMapping("/api/payments/{paymentId}/link")
-    @PreAuthorize("hasAuthority('SEND_PAYMENT') or hasAuthority('ADMIN') or hasAuthority('MANAGER')")
+    @PreAuthorize("hasAuthority('SEND_PAYMENT') or hasAuthority('UPDATE_LEAD_STATUS') or hasAuthority('ADMIN') or hasAuthority('MANAGER')")
     public ResponseEntity<Map<String, String>> generatePaymentLink(@PathVariable Long paymentId) {
         return ResponseEntity.ok(leadPaymentService.generatePaymentLink(paymentId));
     }

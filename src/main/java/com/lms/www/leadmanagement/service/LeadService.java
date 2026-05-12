@@ -341,6 +341,14 @@ public class LeadService {
     private void triggerPipelineActions(Lead lead, String status, StatusUpdateRequest request) {
         boolean hasExplicitDueDate = request.getDueDate() != null && !request.getDueDate().isEmpty();
         User requester = securityService.getCurrentUser();
+        
+        // Strategic Fix: Never create follow-up tasks for terminal/lost statuses
+        List<String> terminalStatuses = List.of("LOST", "NOT_INTERESTED", "REJECTED", "CLOSED");
+        if (terminalStatuses.contains(status.toUpperCase())) {
+            log.info("[PIPELINE] Skipping task creation for terminal status: {}", status);
+            leadTaskRepository.cancelAllPendingByLeadId(lead.getId());
+            return;
+        }
 
         pipelineStageRepository.findByStatusValue(status).ifPresent(stage -> {
             if (stage.isCreateTask() || hasExplicitDueDate) {
@@ -395,9 +403,7 @@ public class LeadService {
             }
         }
 
-        if ("LOST".equalsIgnoreCase(status) || "NOT_INTERESTED".equalsIgnoreCase(status)) {
-            leadTaskRepository.cancelAllPendingByLeadId(lead.getId());
-        } else if ("PAID".equalsIgnoreCase(status) || "SUCCESS".equalsIgnoreCase(status) || "EMI".equalsIgnoreCase(status)) {
+        if ("PAID".equalsIgnoreCase(status) || "SUCCESS".equalsIgnoreCase(status) || "EMI".equalsIgnoreCase(status)) {
             leadTaskRepository.completeAllPendingByLeadId(lead.getId());
         }
     }
