@@ -576,12 +576,26 @@ public class LeadPaymentService {
     }
 
     private void handleFullPayment(Payment payment, Lead lead) {
-        // Complete pending tasks
-        List<LeadTask> tasks = leadTaskRepository.findByLeadId(lead.getId()).stream()
+        // 1. Complete sales-related follow-ups
+        List<LeadTask> followUps = leadTaskRepository.findByLeadId(lead.getId()).stream()
                 .filter(t -> t.getStatus() == LeadTask.TaskStatus.PENDING)
+                .filter(t -> !"EMI_COLLECTION".equalsIgnoreCase(t.getTaskType()))
                 .collect(Collectors.toList());
-        tasks.forEach(t -> t.setStatus(LeadTask.TaskStatus.COMPLETED));
-        leadTaskRepository.saveAll(tasks);
+        followUps.forEach(t -> t.setStatus(LeadTask.TaskStatus.COMPLETED));
+        leadTaskRepository.saveAll(followUps);
+
+        // 2. Smart-complete the specific EMI task if this is an installment payment
+        if (payment.getDueDate() != null) {
+            leadTaskRepository.findByLeadId(lead.getId()).stream()
+                .filter(t -> t.getStatus() == LeadTask.TaskStatus.PENDING)
+                .filter(t -> "EMI_COLLECTION".equalsIgnoreCase(t.getTaskType()))
+                .filter(t -> t.getDueDate() != null && t.getDueDate().toLocalDate().isEqual(payment.getDueDate().toLocalDate()))
+                .findFirst()
+                .ifPresent(t -> {
+                    t.setStatus(LeadTask.TaskStatus.COMPLETED);
+                    leadTaskRepository.save(t);
+                });
+        }
 
         sendAdmissionSuccessEmail(lead, payment);
         syncStudentFee(lead, payment.getAmount(), payment.getTotalAmount(), null, null);
@@ -693,6 +707,7 @@ public class LeadPaymentService {
                 .dueDate(dueDate)
                 .status(LeadTask.TaskStatus.PENDING)
                 .taskType(type)
+                .assignedTo(lead.getAssignedTo())
                 .build();
         leadTaskRepository.save(task);
         

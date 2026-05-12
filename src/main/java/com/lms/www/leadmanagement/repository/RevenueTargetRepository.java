@@ -8,17 +8,17 @@ import java.util.List;
 
 @Repository
 public interface RevenueTargetRepository extends JpaRepository<RevenueTarget, Long> {
-    @org.springframework.data.jpa.repository.Query("SELECT t FROM RevenueTarget t WHERE t.user.id = :userId AND t.month = :month AND t.year = :year AND t.type = 'ASSIGNED' AND t.assignedBy != :userId ORDER BY t.createdAt DESC")
+    @org.springframework.data.jpa.repository.Query("SELECT t FROM RevenueTarget t WHERE t.user.id = :userId AND t.month = :month AND t.year = :year AND t.type IN ('ASSIGNED', 'DISTRIBUTED') AND t.assignedBy != :userId ORDER BY t.createdAt DESC")
     List<RevenueTarget> findAssignedBudget(@org.springframework.data.repository.query.Param("userId") Long userId, 
                                                @org.springframework.data.repository.query.Param("month") Integer month, 
                                                @org.springframework.data.repository.query.Param("year") Integer year);
 
-    @org.springframework.data.jpa.repository.Query("SELECT t FROM RevenueTarget t WHERE t.user.id = :userId AND t.month = :month AND t.year = :year AND t.type = 'ASSIGNED' ORDER BY t.createdAt DESC")
+    @org.springframework.data.jpa.repository.Query("SELECT t FROM RevenueTarget t WHERE t.user.id = :userId AND t.month = :month AND t.year = :year AND t.type IN ('ASSIGNED', 'DISTRIBUTED') ORDER BY t.createdAt DESC")
     List<RevenueTarget> findAssignedTarget(@org.springframework.data.repository.query.Param("userId") Long userId, 
                                               @org.springframework.data.repository.query.Param("month") Integer month, 
                                               @org.springframework.data.repository.query.Param("year") Integer year);
 
-    @org.springframework.data.jpa.repository.Query("SELECT SUM(t.targetAmount) FROM RevenueTarget t WHERE t.id IN (SELECT MAX(t2.id) FROM RevenueTarget t2 WHERE t2.assignedBy = :userId AND t2.month = :month AND t2.year = :year GROUP BY t2.user.id)")
+    @org.springframework.data.jpa.repository.Query("SELECT SUM(t.targetAmount) FROM RevenueTarget t WHERE t.id IN (SELECT MAX(t2.id) FROM RevenueTarget t2 WHERE t2.assignedBy = :userId AND t2.month = :month AND t2.year = :year AND t2.user.id != :userId GROUP BY t2.user.id)")
     java.math.BigDecimal getDistributedTotal(@org.springframework.data.repository.query.Param("userId") Long userId, 
                                            @org.springframework.data.repository.query.Param("month") Integer month, 
                                            @org.springframework.data.repository.query.Param("year") Integer year);

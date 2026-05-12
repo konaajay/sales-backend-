@@ -83,7 +83,8 @@ public class DashboardStatsService {
             securityService.validateAccess(user, targetUserId);
             userIds = Set.of(targetUserId);
         } else {
-            userIds = securityService.getScopedUserIds(user, managerId, teamId);
+            userIds = new HashSet<>(securityService.getScopedUserIds(user, managerId, teamId));
+            userIds.add(user.getId());
         }
 
         boolean isFiltered = targetUserId != null || teamId != null || managerId != null;
@@ -139,7 +140,7 @@ public class DashboardStatsService {
         LocalDateTime dayEnd = zdtNow.toLocalDate().atTime(LocalTime.MAX);
 
         List<User> activeScopeUsers = userRepository.findAllById(userIds).stream()
-                .filter(u -> u.getJoiningDate() == null || !u.getJoiningDate().isAfter(to))
+                .filter(u -> u.getId().equals(requester.getId()) || u.getJoiningDate() == null || !u.getJoiningDate().isAfter(to))
                 .collect(Collectors.toList());
 
         final List<Long> userIdList = activeScopeUsers.stream()
@@ -201,8 +202,8 @@ public class DashboardStatsService {
                         : paymentRepository.getTotalRevenueIn(userIdList, start.withDayOfMonth(1), end),
                 BigDecimal.ZERO);
         CompletableFuture<BigDecimal> pendingRevenueFuture = safeAsync(
-                () -> isGlobalAdmin ? paymentRepository.getGlobalTotalPendingRevenueIn(start, end)
-                        : paymentRepository.getTotalPendingRevenueIn(userIdList, start, end),
+                () -> isGlobalAdmin ? paymentRepository.getGlobalTotalPendingRevenueIn(start.minusYears(5), end)
+                        : paymentRepository.getTotalPendingRevenueIn(userIdList, start.minusYears(5), end),
                 BigDecimal.ZERO);
         CompletableFuture<BigDecimal> forecastRevenueFuture = safeAsync(
                 () -> (isGlobalAdmin || userIdList.isEmpty()) ? BigDecimal.ZERO
@@ -360,27 +361,50 @@ public class DashboardStatsService {
         int filterMonth = (to != null ? to : LocalDate.now()).getMonthValue();
         int filterYear = (to != null ? to : LocalDate.now()).getYear();
 
-        // 1. Context-Aware Assigned Target (Top Number)
-        Long assignedSubjectId = (targetUserId != null && targetUserId > 0) ? targetUserId : requester.getId();
-        
-        // Final broad search for any target record for this user in this month/year
+        // 1. Context-Aware Target Logic
+        Long assignedSubjectId = (targetUserId != null && targetUserId > 0) ? targetUserId : 
+                                 (teamId != null && teamId > 0 ? teamId : requester.getId());
         BigDecimal monthlyTarget = BigDecimal.ZERO;
+        
+        // Fetch all targets for the subject user
         List<RevenueTarget> targets = targetRepository.findAllByUserIdAndMonthAndYearOrderByIdDesc(assignedSubjectId, filterMonth, filterYear);
         
+        System.out.println("TARGET_DEBUG: SubjectId=" + assignedSubjectId + ", Month=" + filterMonth + ", Year=" + filterYear + ", Found=" + targets.size());
+
         if (!targets.isEmpty()) {
-            // Prioritize the target they assigned to themselves (their personal goal in a distribution)
-            // If not found, pick the latest budget assigned to them by a supervisor
-            monthlyTarget = targets.stream()
-                .filter(t -> t.getAssignedBy().equals(assignedSubjectId))
-                .findFirst()
-                .map(RevenueTarget::getTargetAmount)
-                .orElse(targets.get(0).getTargetAmount());
+            boolean isPersonalHomeView = (targetUserId != null && targetUserId.equals(requester.getId()));
+            
+            if (isPersonalHomeView) {
+                monthlyTarget = targets.stream()
+                    .filter(t -> t.getType() != null && "DISTRIBUTED".equalsIgnoreCase(t.getType().name()) && t.getAssignedBy().equals(assignedSubjectId))
+                    .findFirst()
+                    .map(RevenueTarget::getTargetAmount)
+                    .orElseGet(() -> {
+                        return targets.stream()
+                            .filter(t -> t.getType() != null && "ASSIGNED".equalsIgnoreCase(t.getType().name()))
+                            .findFirst()
+                            .map(RevenueTarget::getTargetAmount)
+                            .orElse(targets.get(0).getTargetAmount());
+                    });
+                System.out.println("TARGET_DEBUG: Home View Logic applied. Final=" + monthlyTarget);
+            } else {
+                monthlyTarget = targets.stream()
+                    .filter(t -> t.getType() != null && "ASSIGNED".equalsIgnoreCase(t.getType().name()) && !t.getAssignedBy().equals(assignedSubjectId))
+                    .findFirst()
+                    .map(RevenueTarget::getTargetAmount)
+                    .orElseGet(() -> {
+                        return targets.stream()
+                            .max(Comparator.comparing(RevenueTarget::getTargetAmount))
+                            .map(RevenueTarget::getTargetAmount)
+                            .orElse(targets.get(0).getTargetAmount());
+                    });
+                System.out.println("TARGET_DEBUG: Team View Logic applied. Final=" + monthlyTarget);
+            }
+        } else {
+            System.out.println("TARGET_DEBUG: No targets found in DB for this user/month/year combination.");
         }
 
-        // Final safety net to prevent NullPointerException in calculations below
-        if (monthlyTarget == null) {
-            monthlyTarget = BigDecimal.ZERO;
-        }
+        if (monthlyTarget == null) monthlyTarget = BigDecimal.ZERO;
 
         // 2. Context-Aware Distributed Target (Bottom Number)
         BigDecimal distributedTarget = BigDecimal.ZERO;
@@ -410,15 +434,7 @@ public class DashboardStatsService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         }
 
-        // If filtering is active OR we are in a Global Admin view,
-        // we calculate the aggregate target for the entire visible scope.
-        if (targetUserId != null || teamId != null || isGlobalAdmin) {
-            BigDecimal aggregateTarget = targetRepository.findTotalTargetForUsers(userIdList, filterMonth, filterYear);
-            if (aggregateTarget != null && aggregateTarget.compareTo(BigDecimal.ZERO) > 0) {
-                monthlyTarget = aggregateTarget;
-            }
-        }
-
+        // Achievement calculation based on the context-aware monthlyTarget determined above
         Double achievement = (monthlyTarget != null && monthlyTarget.compareTo(BigDecimal.ZERO) > 0) ? monthly
                 .divide(monthlyTarget, 4, java.math.RoundingMode.HALF_UP).multiply(new BigDecimal(100)).doubleValue()
                 : 0.0;
@@ -426,6 +442,45 @@ public class DashboardStatsService {
         Long presentCount = presentCountFuture.join();
         Long lateCount = lateCountFuture.join();
         Long absentCount = Math.max(0L, (long)userIdList.size() - presentCount);
+
+        // 3. Build Performance List for Subordinates/Scope
+        List<MemberPerformanceDTO> performance = new ArrayList<>();
+        if (!userIdList.isEmpty()) {
+            List<Map<String, Object>> revenuePerUser = paymentRepository.getRevenuePerUser(new HashSet<>(userIdList), start, end);
+            Map<Long, BigDecimal> revenueMap = new HashMap<>();
+            if (revenuePerUser != null) {
+                for (Map<String, Object> m : revenuePerUser) {
+                    Long uid = (Long) m.get("userId");
+                    BigDecimal rev = (BigDecimal) m.get("totalRevenue");
+                    if (uid != null) {
+                        revenueMap.put(uid, rev != null ? rev : BigDecimal.ZERO);
+                    }
+                }
+            }
+            
+            for (User u : activeScopeUsers) {
+                Long uid = u.getId();
+                BigDecimal userTarget = BigDecimal.ZERO;
+                
+                // For each user in scope, find their specific ASSIGNED target for this month
+                List<RevenueTarget> userTargets = targetRepository.findAllByUserIdAndMonthAndYearOrderByIdDesc(uid, filterMonth, filterYear);
+                if (!userTargets.isEmpty()) {
+                    userTarget = userTargets.stream()
+                        .filter(t -> t.getType() != null && "ASSIGNED".equalsIgnoreCase(t.getType().name()))
+                        .findFirst()
+                        .map(RevenueTarget::getTargetAmount)
+                        .orElse(userTargets.get(0).getTargetAmount());
+                }
+
+                performance.add(MemberPerformanceDTO.builder()
+                    .userId(uid)
+                    .username(u.getName())
+                    .role(u.getRole() != null ? u.getRole().getName().replace("ROLE_", "") : "USER")
+                    .targetAmount(userTarget)
+                    .monthlyRevenue(revenueMap.getOrDefault(uid, BigDecimal.ZERO))
+                    .build());
+            }
+        }
 
         return DashboardStatsDTO.builder()
                 .presentCount(presentCount).absentCount(absentCount).halfDayCount(0L)
@@ -450,6 +505,7 @@ public class DashboardStatsService {
                 .overduePaymentsCount(overduePaymentsCountFuture.join())
                 .pendingRevenueAmount(pendingRevenueFuture.join())
                 .statusDistribution(mappedDistribution).userBreakdown(userBreakdown)
+                .performance(performance)
                 .dailyTrend(new ArrayList<>(trendMap.values())).build();
     }
 

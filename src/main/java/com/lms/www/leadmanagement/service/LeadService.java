@@ -166,8 +166,13 @@ public class LeadService {
             }
         }
         String currentStatus = lead.getStatus() != null ? lead.getStatus() : "NEW";
+        String requestedStatus = request.getStatus() != null ? request.getStatus().toUpperCase() : "NEW";
+
         if (List.of("PAID", "SUCCESS", "EMI", "CONVERTED").contains(currentStatus.toUpperCase())) {
-            throw new InvalidRequestException("Cannot change status of a finalized lead");
+            // Allow transitions strictly for payment tracking
+            if (!List.of("PAID", "EMI", "LOST", "REJECTED").contains(requestedStatus)) {
+                throw new InvalidRequestException("Cannot change status of a finalized lead back to early pipeline stages.");
+            }
         }
 
         if (request.getCourseId() != null) {
@@ -266,6 +271,20 @@ public class LeadService {
                             .createdAt(LocalDateTime.now())
                             .updatedAt(LocalDateTime.now())
                             .build());
+
+                    // CRITICAL FIX: Automatically spawn a tracking task for this specific installment
+                    if (!leadTaskRepository.existsByLeadIdAndStatusAndDueDate(lead.getId(), LeadTask.TaskStatus.PENDING, due)) {
+                        leadTaskRepository.save(LeadTask.builder()
+                                .lead(lead)
+                                .assignedTo(lead.getAssignedTo())
+                                .createdBy(securityService.getCurrentUser())
+                                .title("EMI Collection - Planned")
+                                .dueDate(due)
+                                .status(LeadTask.TaskStatus.PENDING)
+                                .taskType("EMI_COLLECTION")
+                                .build());
+                    }
+
                     if (fee.getNextDueDate() == null || due.isBefore(fee.getNextDueDate())) {
                         fee.setNextDueDate(due);
                     }
@@ -378,6 +397,8 @@ public class LeadService {
 
         if ("LOST".equalsIgnoreCase(status) || "NOT_INTERESTED".equalsIgnoreCase(status)) {
             leadTaskRepository.cancelAllPendingByLeadId(lead.getId());
+        } else if ("PAID".equalsIgnoreCase(status) || "SUCCESS".equalsIgnoreCase(status) || "EMI".equalsIgnoreCase(status)) {
+            leadTaskRepository.completeAllPendingByLeadId(lead.getId());
         }
     }
 

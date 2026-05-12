@@ -16,4 +16,6 @@ public class MemberPerformanceDTO {
     private long totalLeads;
     private long convertedCount;
     private long lostCount;
+    private java.math.BigDecimal targetAmount;
+    private java.math.BigDecimal monthlyRevenue;
 }
