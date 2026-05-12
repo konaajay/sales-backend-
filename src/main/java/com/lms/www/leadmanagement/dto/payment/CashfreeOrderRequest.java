@@ -14,6 +14,7 @@ public class CashfreeOrderRequest {
     private String order_id;
     private BigDecimal order_amount;
     private String order_currency;
+    private String order_expiry_time;
     private CustomerDetails customer_details;
     private OrderMeta order_meta;
 

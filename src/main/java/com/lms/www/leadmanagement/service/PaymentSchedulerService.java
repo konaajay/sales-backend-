@@ -31,16 +31,15 @@ public class PaymentSchedulerService {
     @Transactional
     public void processDailyInstallmentReminders() {
         log.info(">>> Running Daily Installment Reminder Check at {}", LocalDateTime.now());
-        
-        LocalDate today = LocalDate.now();
-        LocalDateTime startOfDay = today.atStartOfDay();
-        LocalDateTime endOfDay = today.atTime(LocalTime.MAX);
+                LocalDate tomorrow = LocalDate.now().plusDays(1);
+        LocalDateTime startRange = tomorrow.atStartOfDay();
+        LocalDateTime endRange = tomorrow.atTime(LocalTime.MAX);
 
-        // Find all PENDING installments due today that haven't had a reminder sent
+        // Find all PENDING installments due tomorrow (24 hours in advance)
         List<Payment> duePayments = paymentRepository.findByStatusInAndDueDateBetweenAndReminderSentFalse(
                 List.of(Payment.Status.PENDING, Payment.Status.OVERDUE),
-                startOfDay,
-                endOfDay
+                startRange,
+                endRange
         );
 
         int count = 0;

@@ -11,3 +11,4 @@ bin/
 logs/
 uploads/
 application-local.properties
+src/main/resources/secrets.properties

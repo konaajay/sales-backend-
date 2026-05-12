@@ -109,6 +109,12 @@ public class PaymentController {
         return ResponseEntity.ok(leadPaymentService.verifyAndUpdatePayment(orderId));
     }
 
+    @PostMapping("/api/payments/{paymentId}/link")
+    @PreAuthorize("hasAuthority('SEND_PAYMENT') or hasAuthority('ADMIN') or hasAuthority('MANAGER')")
+    public ResponseEntity<Map<String, String>> generatePaymentLink(@PathVariable Long paymentId) {
+        return ResponseEntity.ok(leadPaymentService.generatePaymentLink(paymentId));
+    }
+
     @PostMapping("/api/payments/webhook/cashfree")
     public ResponseEntity<String> handleCashfreeWebhook(@RequestBody(required = false) String payload, @RequestHeader Map<String, String> headers) {
         System.out.println("========== CASHFREE WEBHOOK HIT ==========");

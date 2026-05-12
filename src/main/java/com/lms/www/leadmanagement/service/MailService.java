@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -46,11 +47,13 @@ public class MailService {
         } catch (Exception e) {
             System.err.println(">>> ERROR: FAILED TO SEND EMAIL TO: " + to);
             System.err.println(">>> REASON: " + e.getMessage());
-            log.error("Failed to send email to {}", to, e);
-            throw new RuntimeException("Email delivery failed: " + e.getMessage());
+            log.error("Failed to send email to {}: {}", to, e.getMessage());
+            // Do not throw RuntimeException to prevent breaking the caller's transaction
+            // and causing a 500 error for the user.
         }
     }
 
+    @Async
     public void sendPaymentLink(String to, String paymentUrl) {
         String subject = "Action Required: Your Admission Payment Link for LMS";
         String body = String.format(
@@ -65,6 +68,7 @@ public class MailService {
         sendEmail(to, subject, body);
     }
 
+    @Async
     public void sendUserCredentials(String to, String password, String name) {
         String subject = "Welcome to NEXUS CRM: Your Administrative Credentials";
         String body = String.format(
@@ -83,6 +87,7 @@ public class MailService {
         sendEmail(to, subject, body);
     }
 
+    @Async
     public void sendOtp(String to, String otp, String name) {
         String subject = "Verification Required: Your NEXUS CRM Security Code";
         String body = String.format(
@@ -100,6 +105,7 @@ public class MailService {
         sendEmail(to, subject, body);
     }
 
+    @Async
     public void sendOverdueReminder(String to, String name, java.math.BigDecimal amount, String dueDate) {
         String subject = "Urgent: Payment Overdue Notice for Your Admission";
         String body = String.format(

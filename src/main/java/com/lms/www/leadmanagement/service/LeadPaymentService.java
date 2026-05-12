@@ -63,18 +63,25 @@ public class LeadPaymentService {
             }
         }
 
-        if (finalSettlement.compareTo(BigDecimal.ZERO) > 0 && totalPlanned.compareTo(finalSettlement) != 0) {
-            throw new InvalidRequestException("Accounting Protocol Violation: Planned amount (\u20B9" + totalPlanned + ") does not match Final Settlement (\u20B9" + finalSettlement + ")");
+        // Fix: totalPlanned already includes 'amount' from line 59
+        BigDecimal totalAccounted = totalPlanned;
+        if (finalSettlement.compareTo(BigDecimal.ZERO) > 0 && totalAccounted.compareTo(finalSettlement) != 0) {
+            throw new InvalidRequestException("Accounting Protocol Violation: Total Commitment (\u20B9" + totalAccounted + ") does not match Final Settlement (\u20B9" + finalSettlement + "). Remaining to plan: \u20B9" + finalSettlement.subtract(amount));
         }
         // ------------------------------------
 
         String orderId = "ORDER_" + leadId + "_" + System.currentTimeMillis();
         
+        // Set order expiry to 48 hours from now with timezone offset
+        String expiryTime = java.time.ZonedDateTime.now().plusHours(48)
+                .format(java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+
         com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest request = 
             com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.builder()
                 .order_id(orderId)
                 .order_amount(amount)
                 .order_currency("INR")
+                .order_expiry_time(expiryTime)
                 .customer_details(com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.CustomerDetails.builder()
                         .customer_id("CUST_" + leadId)
                         .customer_name(lead.getName())
@@ -102,6 +109,9 @@ public class LeadPaymentService {
         // Record planned installments if any
         BigDecimal totalCommitment = amount;
         LocalDateTime firstInstallmentDate = null;
+
+        // Clean up any existing pending/planned installments to prevent duplicates
+        paymentRepository.deleteByLeadIdAndStatusAndPaymentType(leadId, Payment.Status.PENDING, "EMI_INSTALLMENT");
 
         if (plannedInstallments != null && !plannedInstallments.isEmpty()) {
             for (Map<String, Object> inst : plannedInstallments) {
@@ -224,22 +234,26 @@ public class LeadPaymentService {
         }
     }
 
-    public String generatePaymentLink(Payment payment) {
-        Lead lead = leadRepository.findById(payment.getLeadId())
-                .orElseThrow(() -> new ResourceNotFoundException("Lead not found"));
+    @Transactional
+    public Map<String, String> generatePaymentLink(Long paymentId) {
+        Payment payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Payment not found"));
 
         String orderId = "REMI_" + payment.getId() + "_" + System.currentTimeMillis();
         
+        // Set order expiry to 48 hours from now with timezone offset
+        String expiryTime = java.time.ZonedDateTime.now().plusHours(48)
+                .format(java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+
         com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest request = 
             com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.builder()
                 .order_id(orderId)
                 .order_amount(payment.getAmount())
                 .order_currency("INR")
+                .order_expiry_time(expiryTime)
                 .customer_details(com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.CustomerDetails.builder()
-                        .customer_id("CUST_" + lead.getId())
-                        .customer_name(lead.getName())
-                        .customer_email(lead.getEmail())
-                        .customer_phone(lead.getMobile())
+                        .customer_id("CUST_" + payment.getLeadId())
+                        .customer_name("Student") // Lead name will be updated if possible
                         .build())
                 .order_meta(com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.OrderMeta.builder()
                         .return_url(frontendUrl + "/payment-status/" + orderId)
@@ -247,20 +261,31 @@ public class LeadPaymentService {
                         .build())
                 .build();
 
+        // Get lead name for better request if available
+        leadRepository.findById(payment.getLeadId()).ifPresent(l -> {
+            request.getCustomer_details().setCustomer_name(l.getName());
+            request.getCustomer_details().setCustomer_email(l.getEmail());
+            request.getCustomer_details().setCustomer_phone(l.getMobile());
+        });
+
         com.lms.www.leadmanagement.dto.payment.CashfreeOrderResponse cfResponse = cashfreeService.createOrder(request);
-        
+
+        // Update existing payment with the new Gateway ID
         payment.setPaymentGatewayId(orderId);
-        payment.setUpdatedAt(LocalDateTime.now());
         paymentRepository.save(payment);
 
-        return frontendUrl + "/payment-instruction/" + orderId;
+        Map<String, String> result = new HashMap<>();
+        result.put("payment_url", frontendUrl + "/payment-instruction/" + orderId);
+        result.put("order_id", orderId);
+        return result;
     }
 
     public void sendInstallmentReminder(Payment payment) {
         Lead lead = leadRepository.findById(payment.getLeadId())
                 .orElseThrow(() -> new ResourceNotFoundException("Lead not found"));
 
-        String paymentUrl = generatePaymentLink(payment);
+        Map<String, String> linkResult = generatePaymentLink(payment.getId());
+        String paymentUrl = linkResult.get("payment_url");
         
         String subject = "Payment Reminder: Installment Due for " + lead.getName();
         
@@ -728,6 +753,7 @@ public class LeadPaymentService {
         if (fee != null) {
             Map<String, Object> feeMap = new HashMap<>();
             feeMap.put("totalAmount", fee.getTotalAmount());
+            feeMap.put("discount", fee.getDiscount());
             feeMap.put("paidAmount", fee.getPaidAmount());
             feeMap.put("balanceAmount", fee.getBalanceAmount());
             feeMap.put("nextDueDate", fee.getNextDueDate());
