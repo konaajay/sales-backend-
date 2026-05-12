@@ -35,7 +35,7 @@ public class LeadPaymentService {
     @Value("${cashfree.webhook.url}")
     private String webhookUrl;
 
-    @Value("${app.frontend-url:http://localhost:3000}")
+    @Value("${app.frontend-url}")
     private String frontendUrl;
 
     @Transactional
@@ -172,10 +172,20 @@ public class LeadPaymentService {
             if (p.getStatus() != Payment.Status.PAID && p.getStatus() != Payment.Status.SUCCESS) {
                 updatePaymentStatus(p.getId(), "PAID", "CASHFREE_VERIFIED", "Manual Verification Success", p.getAmount(), null);
                 result.put("updated", true);
-                result.put("message", "Payment verified and database updated successfully.");
+                result.put("message", "Payment verified and database updated to PAID.");
             } else {
                 result.put("updated", false);
-                result.put("message", "Payment was already marked as PAID in database.");
+                result.put("message", "Payment was already marked as PAID.");
+            }
+        } else if ("FAILED".equalsIgnoreCase(cfOrder.getOrder_status()) || "CANCELLED".equalsIgnoreCase(cfOrder.getOrder_status())) {
+            Payment p = paymentRepository.findByPaymentGatewayId(orderId).orElse(null);
+            if (p != null && p.getStatus() == Payment.Status.PENDING) {
+                updatePaymentStatus(p.getId(), "FAILED", "CASHFREE_VERIFIED", "Gateway reports failure: " + cfOrder.getOrder_status(), null, null);
+                result.put("updated", true);
+                result.put("message", "Payment marked as FAILED in database.");
+            } else {
+                result.put("updated", false);
+                result.put("message", "Payment status is " + cfOrder.getOrder_status());
             }
         } else {
             result.put("updated", false);

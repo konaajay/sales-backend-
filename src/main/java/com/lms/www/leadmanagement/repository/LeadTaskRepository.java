@@ -38,39 +38,39 @@ public interface LeadTaskRepository extends JpaRepository<LeadTask, Long> {
     // -------------------------------
     // TODAY FOLLOW-UPS (STRICT)
     // -------------------------------
-    @Query("SELECT COUNT(DISTINCT t.lead.id) FROM LeadTask t LEFT JOIN t.lead l LEFT JOIN l.assignedTo a LEFT JOIN l.createdBy c LEFT JOIN t.assignedTo ta WHERE " +
+    @Query("SELECT COUNT(t) FROM LeadTask t LEFT JOIN t.lead l LEFT JOIN l.assignedTo a LEFT JOIN l.createdBy c LEFT JOIN t.assignedTo ta WHERE " +
             "(:userIds IS NULL OR (a.id IN :userIds OR (a IS NULL AND c.id IN :userIds) OR ta.id IN :userIds)) " +
             "AND t.status NOT IN (com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.COMPLETED, com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.CANCELLED) " +
-            "AND (CAST(:start AS date) IS NULL OR t.dueDate >= :start) AND (CAST(:end AS date) IS NULL OR t.dueDate <= :end)")
+            "AND (:start IS NULL OR t.dueDate >= :start) AND (:end IS NULL OR t.dueDate <= :end)")
     long countFollowups(@Param("userIds") Collection<Long> userIds, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
-    @Query("SELECT COUNT(DISTINCT t.lead.id) FROM LeadTask t WHERE t.status NOT IN (com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.COMPLETED, com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.CANCELLED) " +
-            "AND (CAST(:start AS date) IS NULL OR t.dueDate >= :start) AND (CAST(:end AS date) IS NULL OR t.dueDate <= :end)")
+    @Query("SELECT COUNT(t) FROM LeadTask t WHERE t.status NOT IN (com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.COMPLETED, com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.CANCELLED) " +
+            "AND (:start IS NULL OR t.dueDate >= :start) AND (:end IS NULL OR t.dueDate <= :end)")
     long countGlobalFollowups(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
     // -------------------------------
     // PENDING / OVERDUE (STRICT)
     // -------------------------------
-    @Query("SELECT COUNT(DISTINCT t.lead.id) FROM LeadTask t LEFT JOIN t.lead l LEFT JOIN l.assignedTo a LEFT JOIN l.createdBy c LEFT JOIN t.assignedTo ta WHERE " +
+    @Query("SELECT COUNT(t) FROM LeadTask t LEFT JOIN t.lead l LEFT JOIN l.assignedTo a LEFT JOIN l.createdBy c LEFT JOIN t.assignedTo ta WHERE " +
             "(:userIds IS NULL OR (a.id IN :userIds OR (a IS NULL AND c.id IN :userIds) OR ta.id IN :userIds)) " +
             "AND t.status NOT IN (com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.COMPLETED, com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.CANCELLED) " +
-            "AND (CAST(:now AS date) IS NULL OR t.dueDate < :now)")
+            "AND (:now IS NULL OR t.dueDate < :now)")
     long countPendingTasks(@Param("userIds") Collection<Long> userIds, @Param("now") LocalDateTime now);
 
-    @Query("SELECT COUNT(DISTINCT t.lead.id) FROM LeadTask t WHERE t.status NOT IN (com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.COMPLETED, com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.CANCELLED) " +
-            "AND (CAST(:now AS date) IS NULL OR t.dueDate < :now)")
+    @Query("SELECT COUNT(t) FROM LeadTask t WHERE t.status NOT IN (com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.COMPLETED, com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.CANCELLED) " +
+            "AND (:now IS NULL OR t.dueDate < :now)")
     long countGlobalPendingTasks(@Param("now") LocalDateTime now);
 
-    @Query("SELECT COUNT(DISTINCT t.lead.id) FROM LeadTask t LEFT JOIN t.lead l LEFT JOIN l.assignedTo a LEFT JOIN l.createdBy c WHERE " +
-            "(a.id IN :userIds OR (a IS NULL AND c.id IN :userIds)) " +
+    @Query("SELECT COUNT(t) FROM LeadTask t LEFT JOIN t.lead l LEFT JOIN l.assignedTo a LEFT JOIN l.createdBy c LEFT JOIN t.assignedTo ta WHERE " +
+            "(:userIds IS NULL OR (a.id IN :userIds OR (a IS NULL AND c.id IN :userIds) OR ta.id IN :userIds)) " +
             "AND t.status NOT IN (com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.COMPLETED, com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.CANCELLED) " +
             "AND t.taskType = :type " +
-            "AND (CAST(:now AS date) IS NULL OR t.dueDate < :now)")
+            "AND (:now IS NULL OR t.dueDate < :now)")
     long countPendingTasksByType(@Param("userIds") Collection<Long> userIds, @Param("type") String type, @Param("now") LocalDateTime now);
 
-    @Query("SELECT COUNT(DISTINCT t.lead.id) FROM LeadTask t WHERE t.status NOT IN (com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.COMPLETED, com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.CANCELLED) " +
+    @Query("SELECT COUNT(t) FROM LeadTask t WHERE t.status NOT IN (com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.COMPLETED, com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.CANCELLED) " +
             "AND t.taskType = :type " +
-            "AND (CAST(:now AS date) IS NULL OR t.dueDate < :now)")
+            "AND (:now IS NULL OR t.dueDate < :now)")
     long countGlobalPendingTasksByType(@Param("type") String type, @Param("now") LocalDateTime now);
 
     // -------------------------------
@@ -87,11 +87,11 @@ public interface LeadTaskRepository extends JpaRepository<LeadTask, Long> {
     // -------------------------------
     // TYPE-BASED (SAFE)
     // -------------------------------
-    @Query("SELECT COUNT(t) FROM LeadTask t LEFT JOIN t.lead l LEFT JOIN l.assignedTo a LEFT JOIN l.createdBy c WHERE " +
-            "(a.id IN :userIds OR (a IS NULL AND c.id IN :userIds)) " +
+    @Query("SELECT COUNT(t) FROM LeadTask t LEFT JOIN t.lead l LEFT JOIN l.assignedTo a LEFT JOIN l.createdBy c LEFT JOIN t.assignedTo ta WHERE " +
+            "(:userIds IS NULL OR (a.id IN :userIds OR (a IS NULL AND c.id IN :userIds) OR ta.id IN :userIds)) " +
             "AND t.status NOT IN (com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.COMPLETED, com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.CANCELLED) " +
             "AND t.taskType = :type " +
-            "AND (CAST(:start AS date) IS NULL OR t.dueDate >= :start) AND (CAST(:end AS date) IS NULL OR t.dueDate <= :end)")
+            "AND (:start IS NULL OR t.dueDate >= :start) AND (:end IS NULL OR t.dueDate <= :end)")
     long countFollowupsByType(@Param("userIds") java.util.Collection<Long> userIds, @Param("type") String type, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
     @Query("SELECT COUNT(t) FROM LeadTask t WHERE t.status NOT IN (com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.COMPLETED, com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.CANCELLED) " +

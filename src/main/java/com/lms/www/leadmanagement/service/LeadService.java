@@ -90,12 +90,14 @@ public class LeadService {
     }
 
     @Transactional(readOnly = true)
-    public List<LeadDTO> getMyLeads() {
+    public List<LeadDTO> getMyLeads(LocalDateTime start, LocalDateTime end) {
         User user = securityService.getCurrentUser();
         List<User> context = List.of(user);
 
         return leadRepository.findListByAssignedToInOrCreatedByIn(context, context)
                 .stream()
+                .filter(l -> (start == null || !l.getCreatedAt().isBefore(start))
+                        && (end == null || !l.getCreatedAt().isAfter(end)))
                 .sorted(Comparator.comparing(Lead::getCreatedAt).reversed())
                 .map(l -> convertToDTO(l))
                 .collect(Collectors.toList());

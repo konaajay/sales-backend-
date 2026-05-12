@@ -8,9 +8,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.servlet.view.RedirectView;
 
 @Controller
+@lombok.extern.slf4j.Slf4j
 public class PaymentRedirectController {
 
-    @Value("${app.frontend-url:https://salestoo.netlify.app}")
+    @Value("${app.frontend-url}")
     private String frontendUrl;
 
     @GetMapping("/pay/{sessionId}")
@@ -20,7 +21,7 @@ public class PaymentRedirectController {
         if (mode != null) {
             redirectUrl += "?mode=" + mode;
         }
-        System.out.println(">>> REDIRECTING /pay/ request from Backend to: " + redirectUrl);
+        log.info(">>> REDIRECTING /pay/ request from Backend to: {}", redirectUrl);
         return new RedirectView(redirectUrl);
     }
 }

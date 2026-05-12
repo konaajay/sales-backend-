@@ -23,6 +23,9 @@ import java.util.List;
 @EnableMethodSecurity
 public class WebSecurityConfig {
 
+    @org.springframework.beans.factory.annotation.Value("${app.frontend-url}")
+    private String frontendUrl;
+
     @Autowired
     private UserDetailsServiceImpl userDetailsService;
 
@@ -108,12 +111,8 @@ public class WebSecurityConfig {
         var config = new org.springframework.web.cors.CorsConfiguration();
 
         config.setAllowedOrigins(List.of(
-                "http://100.30.239.118",
-                "http://52.90.98.188",
-                "http://localhost:5173",
-                "http://localhost:3000",
-                "http://127.0.0.1:3000",
-                "http://54.84.148.176"
+                frontendUrl,
+                "http://localhost:3000"
         ));
 
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));

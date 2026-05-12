@@ -3,6 +3,7 @@ package com.lms.www.leadmanagement.controller;
 import com.lms.www.leadmanagement.dto.PaymentDTO;
 import com.lms.www.leadmanagement.dto.PaymentSplitRequest;
 import com.lms.www.leadmanagement.service.LeadPaymentService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -13,6 +14,7 @@ import java.util.Map;
 import java.util.List;
 
 @RestController
+@Slf4j
 public class PaymentController {
 
     @Autowired
@@ -117,9 +119,9 @@ public class PaymentController {
 
     @PostMapping("/api/payments/webhook/cashfree")
     public ResponseEntity<String> handleCashfreeWebhook(@RequestBody(required = false) String payload, @RequestHeader Map<String, String> headers) {
-        System.out.println("========== CASHFREE WEBHOOK HIT ==========");
-        System.out.println("Headers: " + headers);
-        System.out.println("Payload: " + payload);
+        log.info("========== CASHFREE WEBHOOK HIT ==========");
+        log.info("Headers: {}", headers);
+        log.info("Payload: {}", payload);
         
         try {
             if (payload == null || payload.isBlank()) {
@@ -134,27 +136,34 @@ public class PaymentController {
                 Map<String, Object> order = (Map<String, Object>) data.get("order");
                 Map<String, Object> payment = (Map<String, Object>) data.get("payment");
                 
-                if (order != null && payment != null && "SUCCESS".equals(payment.get("payment_status"))) {
+                if (order != null && payment != null) {
                     String gatewayOrderId = (String) order.get("order_id");
+                    String paymentStatus = (String) payment.get("payment_status");
                     java.math.BigDecimal amount = new java.math.BigDecimal(payment.get("payment_amount").toString());
                     String method = (String) payment.get("payment_group");
-                    
+
                     // Find pending payment record by gateway ID
                     com.lms.www.leadmanagement.entity.Payment p = paymentRepository
                             .findByPaymentGatewayId(gatewayOrderId)
                             .orElse(null);
-                    
-                    if (p != null && p.getStatus() != com.lms.www.leadmanagement.entity.Payment.Status.PAID) {
-                        leadPaymentService.updatePaymentStatus(p.getId(), "PAID", method, "Cashfree Webhook Success", amount, null);
-                        System.out.println("Webhook: Updated payment " + p.getId() + " to PAID.");
+
+                    if (p != null) {
+                        if ("SUCCESS".equals(paymentStatus) && p.getStatus() != com.lms.www.leadmanagement.entity.Payment.Status.PAID) {
+                            leadPaymentService.updatePaymentStatus(p.getId(), "PAID", method, "Cashfree Webhook Success", amount, null);
+                            log.info("Webhook: Updated payment {} to PAID.", p.getId());
+                        } else if ("FAILED".equals(paymentStatus) && p.getStatus() == com.lms.www.leadmanagement.entity.Payment.Status.PENDING) {
+                            leadPaymentService.updatePaymentStatus(p.getId(), "FAILED", method, "Cashfree Webhook Reported Failure", amount, null);
+                            log.info("Webhook: Updated payment {} to FAILED.", p.getId());
+                        } else {
+                            log.info("Webhook: No update needed for order {}. Current status: {}, Gateway status: {}", gatewayOrderId, p.getStatus(), paymentStatus);
+                        }
                     } else {
-                        System.out.println("Webhook: Payment not found or already PAID for order " + gatewayOrderId);
+                        log.info("Webhook: Payment record not found for order {}", gatewayOrderId);
                     }
                 }
             }
         } catch (Exception e) {
-            System.err.println("Error processing Cashfree webhook: " + e.getMessage());
-            e.printStackTrace();
+            log.error("Error processing Cashfree webhook: {}", e.getMessage(), e);
             // Don't throw, let it return 200 OK to avoid Cashfree retries / test failures
         }
         
@@ -174,6 +183,7 @@ public class PaymentController {
         response.put("amount", p.getAmount());
         response.put("studentName", lead.getName());
         response.put("studentEmail", lead.getEmail());
+        response.put("status", p.getStatus().name());
         
         // Proactive Verification: If the order is pending in our DB, check Cashfree status
         if (p.getStatus() == com.lms.www.leadmanagement.entity.Payment.Status.PENDING) {
@@ -183,10 +193,13 @@ public class PaymentController {
                     leadPaymentService.updatePaymentStatus(p.getId(), "PAID", "PUBLIC_PAGE_SYNC", "Auto-verified on public page visit", p.getAmount(), null);
                     // Refresh entity to get updated status for the response
                     p = paymentRepository.findById(p.getId()).orElse(p);
+                } else if ("FAILED".equalsIgnoreCase(cfOrder.getOrder_status()) || "CANCELLED".equalsIgnoreCase(cfOrder.getOrder_status())) {
+                    leadPaymentService.updatePaymentStatus(p.getId(), "FAILED", "PUBLIC_PAGE_SYNC", "Gateway reported failure on status page visit", p.getAmount(), null);
+                    p = paymentRepository.findById(p.getId()).orElse(p);
                 }
             } catch (Exception e) {
                 // Ignore errors during proactive sync, just log
-                System.err.println("[SYNC-WARN] Proactive status check failed for " + orderId + ": " + e.getMessage());
+                log.warn("[SYNC-WARN] Proactive status check failed for {}: {}", orderId, e.getMessage());
             }
         }
 

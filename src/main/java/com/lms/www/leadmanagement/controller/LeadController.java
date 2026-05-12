@@ -44,8 +44,12 @@ public class LeadController {
 
     @GetMapping("/my")
     @PreAuthorize("hasAnyAuthority('VIEW_LEADS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_TEAM_LEADER', 'ROLE_ASSOCIATE', 'ADMIN', 'MANAGER', 'TEAM_LEADER', 'ASSOCIATE')")
-    public ResponseEntity<List<LeadDTO>> getMyLeads() {
-        return ResponseEntity.ok(leadService.getMyLeads());
+    public ResponseEntity<List<LeadDTO>> getMyLeads(
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate startDate,
+            @RequestParam(required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate endDate) {
+        java.time.LocalDateTime start = startDate != null ? startDate.atStartOfDay() : null;
+        java.time.LocalDateTime end = endDate != null ? endDate.atTime(java.time.LocalTime.MAX) : null;
+        return ResponseEntity.ok(leadService.getMyLeads(start, end));
     }
 
 

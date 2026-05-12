@@ -137,16 +137,17 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
 
     @Query("SELECT new map(" +
             "count(l) as total, " +
-            "sum(case when l.status = 'NEW' then 1 else 0 end) as newCount, " +
-            "sum(case when l.status = 'CONTACTED' then 1 else 0 end) as contactedCount, " +
-            "sum(case when l.status IN ('INTERESTED', 'UNDER_REVIEW') then 1 else 0 end) as interestedCount, " +
-            "sum(case when l.status = 'FOLLOW_UP' then 1 else 0 end) as followUpCount, " +
-            "sum(case when l.status IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as convertedCount, " +
-            "sum(case when l.status = 'REJECTED' then 1 else 0 end) as rejectedCount, " +
-            "sum(case when l.status = 'REFUND' then 1 else 0 end) as refundCount, " +
-            "sum(case when l.status IN ('LOST', 'NOT_INTERESTED') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as lostCount) " +
+            "sum(case when UPPER(l.status) = 'NEW' then 1 else 0 end) as newCount, " +
+            "sum(case when UPPER(l.status) = 'CONTACTED' then 1 else 0 end) as contactedCount, " +
+            "sum(case when UPPER(l.status) IN ('INTERESTED', 'UNDER_REVIEW') then 1 else 0 end) as interestedCount, " +
+            "sum(case when UPPER(l.status) = 'FOLLOW_UP' then 1 else 0 end) as followUpCount, " +
+            "sum(case when UPPER(l.status) IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as convertedCount, " +
+            "sum(case when UPPER(l.status) = 'REJECTED' then 1 else 0 end) as rejectedCount, " +
+            "sum(case when UPPER(l.status) = 'REFUND' then 1 else 0 end) as refundCount, " +
+            "sum(case when UPPER(l.status) IN ('LOST', 'NOT_INTERESTED') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as lostCount) " +
             "FROM Lead l LEFT JOIN l.assignedTo a " +
-            "WHERE (a.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds))")
+            "WHERE (a.id IN :userIds OR l.createdBy.id IN :userIds) " +
+            "AND l.createdAt BETWEEN :start AND :end")
     Map<String, Long> getSummaryStats(
             @Param("userIds") Collection<Long> userIds,
             @Param("start") LocalDateTime start,
@@ -154,14 +155,14 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
 
     @Query("SELECT new map(" +
             "count(l) as total, " +
-            "sum(case when l.status = 'NEW' then 1 else 0 end) as newCount, " +
-            "sum(case when l.status = 'CONTACTED' then 1 else 0 end) as contactedCount, " +
-            "sum(case when l.status IN ('INTERESTED', 'UNDER_REVIEW') then 1 else 0 end) as interestedCount, " +
-            "sum(case when l.status = 'FOLLOW_UP' then 1 else 0 end) as followUpCount, " +
-            "sum(case when l.status IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS') then 1 else 0 end) as convertedCount, " +
-            "sum(case when l.status = 'REJECTED' then 1 else 0 end) as rejectedCount, " +
-            "sum(case when l.status = 'REFUND' then 1 else 0 end) as refundCount, " +
-            "sum(case when l.status IN ('LOST', 'NOT_INTERESTED') then 1 else 0 end) as lostCount) " +
+            "sum(case when UPPER(l.status) = 'NEW' then 1 else 0 end) as newCount, " +
+            "sum(case when UPPER(l.status) = 'CONTACTED' then 1 else 0 end) as contactedCount, " +
+            "sum(case when UPPER(l.status) IN ('INTERESTED', 'UNDER_REVIEW') then 1 else 0 end) as interestedCount, " +
+            "sum(case when UPPER(l.status) = 'FOLLOW_UP' then 1 else 0 end) as followUpCount, " +
+            "sum(case when UPPER(l.status) IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as convertedCount, " +
+            "sum(case when UPPER(l.status) = 'REJECTED' then 1 else 0 end) as rejectedCount, " +
+            "sum(case when UPPER(l.status) = 'REFUND' then 1 else 0 end) as refundCount, " +
+            "sum(case when UPPER(l.status) IN ('LOST', 'NOT_INTERESTED') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as lostCount) " +
             "FROM Lead l " +
             "WHERE l.createdAt BETWEEN :start AND :end")
     Map<String, Long> getGlobalSummaryStats(
@@ -170,14 +171,14 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
 
     @Query("SELECT new map(" +
             "count(l) as total, " +
-            "sum(case when l.status = 'NEW' then 1 else 0 end) as newCount, " +
-            "sum(case when l.status = 'CONTACTED' then 1 else 0 end) as contactedCount, " +
-            "sum(case when l.status IN ('INTERESTED', 'UNDER_REVIEW') then 1 else 0 end) as interestedCount, " +
-            "sum(case when l.status = 'FOLLOW_UP' then 1 else 0 end) as followUpCount, " +
-            "sum(case when l.status IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS') then 1 else 0 end) as convertedCount, " +
-            "sum(case when l.status = 'REJECTED' then 1 else 0 end) as rejectedCount, " +
-            "sum(case when l.status = 'REFUND' then 1 else 0 end) as refundCount, " +
-            "sum(case when l.status IN ('LOST', 'NOT_INTERESTED') then 1 else 0 end) as lostCount) " +
+            "sum(case when UPPER(l.status) = 'NEW' then 1 else 0 end) as newCount, " +
+            "sum(case when UPPER(l.status) = 'CONTACTED' then 1 else 0 end) as contactedCount, " +
+            "sum(case when UPPER(l.status) IN ('INTERESTED', 'UNDER_REVIEW') then 1 else 0 end) as interestedCount, " +
+            "sum(case when UPPER(l.status) = 'FOLLOW_UP' then 1 else 0 end) as followUpCount, " +
+            "sum(case when UPPER(l.status) IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as convertedCount, " +
+            "sum(case when UPPER(l.status) = 'REJECTED' then 1 else 0 end) as rejectedCount, " +
+            "sum(case when UPPER(l.status) = 'REFUND' then 1 else 0 end) as refundCount, " +
+            "sum(case when UPPER(l.status) IN ('LOST', 'NOT_INTERESTED') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as lostCount) " +
             "FROM Lead l " +
             "WHERE l.assignedTo.id = :userId AND l.createdAt BETWEEN :start AND :end")
     Map<String, Long> getUserSpecificSummaryStats(
@@ -185,13 +186,13 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 
-    @Query("SELECT COUNT(l) FROM Lead l WHERE (l.assignedTo.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds)) AND l.followUpDate BETWEEN :start AND :end")
+    @Query("SELECT COUNT(l) FROM Lead l WHERE (l.assignedTo.id IN :userIds OR l.createdBy.id IN :userIds) AND l.followUpDate BETWEEN :start AND :end")
     long countLeadsByFollowUpDate(@Param("userIds") Collection<Long> userIds, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
-    @Query("SELECT COUNT(l) FROM Lead l WHERE (l.assignedTo.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds)) AND l.followUpDate < :now AND l.status NOT IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS', 'LOST', 'NOT_INTERESTED', 'CLOSED', 'COMPLETED')")
+    @Query("SELECT COUNT(l) FROM Lead l WHERE (l.assignedTo.id IN :userIds OR l.createdBy.id IN :userIds) AND l.followUpDate < :now AND l.status NOT IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS', 'LOST', 'NOT_INTERESTED', 'CLOSED', 'COMPLETED')")
     long countOverdueLeads(@Param("userIds") Collection<Long> userIds, @Param("now") LocalDateTime now);
 
-    @Query("SELECT COUNT(l) FROM Lead l WHERE (l.assignedTo.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds)) AND l.status IN ('INTERESTED', 'UNDER_REVIEW') AND l.followUpDate <= :now")
+    @Query("SELECT COUNT(l) FROM Lead l WHERE (l.assignedTo.id IN :userIds OR l.createdBy.id IN :userIds) AND l.status IN ('INTERESTED', 'UNDER_REVIEW') AND l.followUpDate <= :now")
     long countHighPriorityLeads(@Param("userIds") Collection<Long> userIds, @Param("now") LocalDateTime now);
 
     @Query("SELECT COUNT(l) FROM Lead l WHERE l.followUpDate BETWEEN :start AND :end")
@@ -204,7 +205,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
     long countGlobalHighPriorityLeads(@Param("now") LocalDateTime now);
 
     @Query("SELECT new map(FUNCTION('DATE', l.createdAt) as date, count(l) as count) " +
-            "FROM Lead l WHERE (l.assignedTo.id IN :userIds OR (l.assignedTo.id IS NULL AND l.createdBy.id IN :userIds)) AND l.createdAt BETWEEN :start AND :end " +
+            "FROM Lead l WHERE (l.assignedTo.id IN :userIds OR l.createdBy.id IN :userIds) AND l.createdAt BETWEEN :start AND :end " +
             "GROUP BY FUNCTION('DATE', l.createdAt) ORDER BY FUNCTION('DATE', l.createdAt)")
     List<Map<String, Object>> getDailyLeadTrendByIds(
             @Param("userIds") Collection<Long> userIds,
@@ -219,7 +220,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
             @Param("end") LocalDateTime end);
 
     @Query("SELECT new map(FUNCTION('DATE', l.updatedAt) as date, count(l) as count) " +
-            "FROM Lead l WHERE (l.assignedTo.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds)) AND l.status IN :successStatuses AND l.updatedAt BETWEEN :start AND :end " +
+            "FROM Lead l WHERE (l.assignedTo.id IN :userIds OR l.createdBy.id IN :userIds) AND l.status IN :successStatuses AND l.updatedAt BETWEEN :start AND :end " +
             "GROUP BY FUNCTION('DATE', l.updatedAt) ORDER BY FUNCTION('DATE', l.updatedAt)")
     List<Map<String, Object>> getDailyConvertedTrendByIds(
             @Param("userIds") Collection<Long> userIds,
@@ -236,7 +237,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
             @Param("end") LocalDateTime end);
 
     @Query("SELECT new map(FUNCTION('DATE', l.updatedAt) as date, count(l) as count) " +
-            "FROM Lead l WHERE (l.assignedTo.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds)) AND l.status IN :lostStatuses AND l.updatedAt BETWEEN :start AND :end " +
+            "FROM Lead l WHERE (l.assignedTo.id IN :userIds OR l.createdBy.id IN :userIds) AND l.status IN :lostStatuses AND l.updatedAt BETWEEN :start AND :end " +
             "GROUP BY FUNCTION('DATE', l.updatedAt) ORDER BY FUNCTION('DATE', l.updatedAt)")
     List<Map<String, Object>> getDailyLostTrendByIds(
             @Param("userIds") Collection<Long> userIds,
@@ -253,17 +254,17 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
             @Param("end") LocalDateTime end);
 
 
-    @Query("SELECT l.status as status, COUNT(l) as count FROM Lead l " +
+    @Query("SELECT UPPER(l.status) as status, COUNT(l) as count FROM Lead l " +
            "LEFT JOIN l.assignedTo a " +
-           "WHERE (a.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds)) " +
-           "AND l.createdAt BETWEEN :start AND :end GROUP BY l.status")
+           "WHERE (a.id IN :userIds OR l.createdBy.id IN :userIds) " +
+           "AND l.createdAt BETWEEN :start AND :end GROUP BY UPPER(l.status)")
     List<DashboardProjection> countByStatusForUsers(
             @Param("userIds") Collection<Long> userIds,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 
-    @Query("SELECT l.status as status, COUNT(l) as count FROM Lead l " +
-           "WHERE l.createdAt BETWEEN :start AND :end GROUP BY l.status")
+    @Query("SELECT UPPER(l.status) as status, COUNT(l) as count FROM Lead l " +
+           "WHERE l.createdAt BETWEEN :start AND :end GROUP BY UPPER(l.status)")
     List<DashboardProjection> countByStatusGlobal(
             @Param("start") LocalDateTime start, 
             @Param("end") LocalDateTime end);

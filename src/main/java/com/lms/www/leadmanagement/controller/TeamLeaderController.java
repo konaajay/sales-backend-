@@ -59,8 +59,10 @@ public class TeamLeaderController {
 
     @PreAuthorize("hasAnyAuthority('VIEW_LEADS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_TEAM_LEADER')")
     @GetMapping("/leads/my")
-    public ResponseEntity<List<LeadDTO>> getMyLeads() {
-        return ResponseEntity.ok(leadService.getMyLeads());
+    public ResponseEntity<List<LeadDTO>> getMyLeads(
+            @RequestParam(value = "startDate", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime startDate,
+            @RequestParam(value = "endDate", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE_TIME) java.time.LocalDateTime endDate) {
+        return ResponseEntity.ok(leadService.getMyLeads(startDate, endDate));
     }
 
     @PreAuthorize("hasAnyAuthority('VIEW_LEADS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ROLE_TEAM_LEADER')")
@@ -75,7 +77,7 @@ public class TeamLeaderController {
     @PreAuthorize("hasAuthority('VIEW_LEADS')")
     @GetMapping("/leads/stats")
     public ResponseEntity<Map<String, Long>> getMyLeadStats() {
-        List<LeadDTO> myLeads = leadService.getMyLeads();
+        List<LeadDTO> myLeads = leadService.getMyLeads(null, null);
         Map<String, Long> stats = new java.util.HashMap<>();
         stats.put("TOTAL", (long) myLeads.size());
         stats.put("INTERESTED", myLeads.stream().filter(l -> "INTERESTED".equals(l.getStatus())).count());
