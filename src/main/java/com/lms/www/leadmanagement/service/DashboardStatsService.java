@@ -81,10 +81,14 @@ public class DashboardStatsService {
         Set<Long> userIds;
         if (targetUserId != null && targetUserId > 0) {
             securityService.validateAccess(user, targetUserId);
-            userIds = Set.of(targetUserId);
+            userIds = new HashSet<>(Set.of(targetUserId));
         } else {
             userIds = new HashSet<>(securityService.getScopedUserIds(user, managerId, teamId));
-            userIds.add(user.getId());
+            // Only add self (Admin/Manager) to the count if we are viewing the global/default scope
+            boolean isFiltered = managerId != null || teamId != null;
+            if (!isFiltered) {
+                userIds.add(user.getId());
+            }
         }
 
         boolean isFiltered = targetUserId != null || teamId != null || managerId != null;
@@ -141,6 +145,14 @@ public class DashboardStatsService {
 
         List<User> activeScopeUsers = userRepository.findAllById(userIds).stream()
                 .filter(u -> u.getId().equals(requester.getId()) || u.getJoiningDate() == null || !u.getJoiningDate().isAfter(to))
+                .filter(u -> {
+                    // If we are in a filtered view, exclude ADMINs from the staff count
+                    if (teamId != null) {
+                        String r = u.getRole() != null ? u.getRole().getName().toUpperCase() : "";
+                        return !r.contains("ADMIN");
+                    }
+                    return true;
+                })
                 .collect(Collectors.toList());
 
         final List<Long> userIdList = activeScopeUsers.stream()

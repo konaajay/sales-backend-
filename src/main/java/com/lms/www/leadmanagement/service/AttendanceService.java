@@ -193,6 +193,7 @@ public class AttendanceService {
                     .officeRadius(office != null ? office.getRadius() : 30.0)
                     .officeName(office != null ? office.getName() : null)
                     .isWfhApproved(isWfhApproved(userId))
+                    .wfhStatus(isWfhApproved(userId) ? "APPROVED" : "NONE")
                     .build());
         }
     }
@@ -284,6 +285,7 @@ public class AttendanceService {
                 .officeRadius(s.getOffice() != null ? s.getOffice().getRadius() : 30.0)
                 .officeName(s.getOffice() != null ? s.getOffice().getName() : null)
                 .isWfhApproved(isWfhApproved(s.getUser().getId()))
+                .wfhStatus(isWfhApproved(s.getUser().getId()) ? "APPROVED" : "NONE")
                 .build();
     }
 

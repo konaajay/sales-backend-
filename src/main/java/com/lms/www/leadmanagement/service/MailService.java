@@ -1,6 +1,5 @@
 package com.lms.www.leadmanagement.service;
 
-import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -9,16 +8,16 @@ import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.thymeleaf.TemplateEngine;
+import org.thymeleaf.context.Context;
 
 @Service
 @Slf4j
+@RequiredArgsConstructor
 public class MailService {
 
     private final JavaMailSender mailSender;
-
-    public MailService(JavaMailSender mailSender) {
-        this.mailSender = mailSender;
-    }
+    private final TemplateEngine templateEngine;
 
     @Value("${spring.mail.username}")
     private String fromEmail;
@@ -26,104 +25,61 @@ public class MailService {
     @Value("${app.frontend-url:http://localhost:3000}")
     private String frontendUrl;
 
-    @SuppressWarnings("all")
     public void sendEmail(String to, String subject, String body) {
-        System.out.println(">>> ATTEMPTING TO SEND EMAIL VIA: " + fromEmail + " TO: " + to);
+        log.info("Attempting to send email to: {}", to);
         try {
             MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, true);
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
             helper.setFrom(fromEmail);
             helper.setTo(to);
             helper.setSubject(subject);
-            helper.setText(body, true); // true for HTML
+            helper.setText(body, true);
             
-            System.out.println(">>> SUBJECT: " + subject);
-            System.out.println(">>> BODY LENGTH: " + body.length() + " chars");
-            
-            System.out.println(">>> CONNECTING TO SMTP SERVER FOR: " + to);
             mailSender.send(message);
-            System.out.println(">>> SUCCESSFULLY SENT EMAIL TO: " + to);
-            log.info("Email sent successfully to {}", to);
+            log.info("Successfully sent email to: {}", to);
         } catch (Exception e) {
-            System.err.println(">>> ERROR: FAILED TO SEND EMAIL TO: " + to);
-            System.err.println(">>> REASON: " + e.getMessage());
             log.error("Failed to send email to {}: {}", to, e.getMessage());
-            // Do not throw RuntimeException to prevent breaking the caller's transaction
-            // and causing a 500 error for the user.
         }
     }
 
     @Async
     public void sendPaymentLink(String to, String paymentUrl) {
-        String subject = "Action Required: Your Admission Payment Link for LMS";
-        String body = String.format(
-            "<h3>Hello!</h3>" +
-            "<p>We're excited to have you join our program.</p>" +
-            "<p>To complete your admission, please use the secure payment link below:</p>" +
-            "<p><a href='%s' style='background:#007bff;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;'>Pay Now & Complete Admission</a></p>" +
-            "<p>Alternatively, copy and paste this link: <br/> %s</p>" +
-            "<br/><p>Best regards,<br/>LMS Team</p>",
-            paymentUrl, paymentUrl
-        );
-        sendEmail(to, subject, body);
+        Context context = new Context();
+        context.setVariable("paymentUrl", paymentUrl);
+        String body = templateEngine.process("emails/payment-link", context);
+        sendEmail(to, "Action Required: Your Admission Payment Link | Gyantric CRM", body);
     }
 
     @Async
     public void sendUserCredentials(String to, String password, String name) {
-        String subject = "Welcome to NEXUS CRM: Your Administrative Credentials";
-        String body = String.format(
-            "<h3>Welcome to the Team, %s!</h3>" +
-            "<p>Your official administrative lead has been established on NEXUS CRM.</p>" +
-            "<div style='background:#f8fafc;padding:20px;border-left:4px solid #6366f1;border-radius:8px;'>" +
-            "   <p style='margin-bottom:10px;'><strong>Login Credentials:</strong></p>" +
-            "   <p style='margin:5px 0;'><strong>Username/Email:</strong> %s</p>" +
-            "   <p style='margin:5px 0;'><strong>Secure Password:</strong> %s</p>" +
-            "</div>" +
-            "<p style='margin-top:20px;'><a href='" + frontendUrl + "/login' style='background:#6366f1;color:white;padding:12px 24px;text-decoration:none;border-radius:30px;font-weight:bold;'>Access Dashboard</a></p>" +
-            "<p>Please ensure you change your password upon initial authentication for security purposes.</p>" +
-            "<br/><p>Best regards,<br/>NEXUS Intelligence Cluster</p>",
-            name, to, password
-        );
-        sendEmail(to, subject, body);
+        Context context = new Context();
+        context.setVariable("name", name);
+        context.setVariable("email", to);
+        context.setVariable("password", password);
+        context.setVariable("loginUrl", frontendUrl + "/login");
+        
+        String body = templateEngine.process("emails/welcome-email", context);
+        sendEmail(to, "Welcome to Gyantric CRM | Your Account is Ready", body);
     }
 
     @Async
     public void sendOtp(String to, String otp, String name) {
-        String subject = "Verification Required: Your NEXUS CRM Security Code";
-        String body = String.format(
-            "<h3>Security Protocol Verification</h3>" +
-            "<p>Hello %s,</p>" +
-            "<p>You have requested a security passcode update for your account on NEXUS CRM.</p>" +
-            "<div style='background:#f8fafc;padding:30px;text-align:center;border:1px solid #e2e8f0;border-radius:12px;margin:20px 0;'>" +
-            "   <p style='margin-bottom:10px;color:#64748b;font-weight:bold;text-transform:uppercase;font-size:11px;letter-spacing:1px;'>Your Security Code</p>" +
-            "   <h1 style='margin:0;color:#6366f1;font-size:36px;letter-spacing:8px;font-family:monospace;'>%s</h1>" +
-            "</div>" +
-            "<p>This code is valid for <strong>15 minutes</strong>. If you did not request this code, please secure your account immediately.</p>" +
-            "<br/><p>Regards,<br/>NEXUS Intelligence Cluster</p>",
-            name, otp
-        );
-        sendEmail(to, subject, body);
+        Context context = new Context();
+        context.setVariable("name", name);
+        context.setVariable("otp", otp);
+        
+        String body = templateEngine.process("emails/otp-email", context);
+        sendEmail(to, "Your Verification Code | Gyantric CRM", body);
     }
 
     @Async
     public void sendOverdueReminder(String to, String name, java.math.BigDecimal amount, String dueDate) {
-        String subject = "Urgent: Payment Overdue Notice for Your Admission";
-        String body = String.format(
-            "<div style='font-family:sans-serif;max-width:600px;margin:0 auto;'>" +
-            "   <h2 style='color:#dc2626;'>Payment Overdue Notification</h2>" +
-            "   <p>Hello %s,</p>" +
-            "   <p>This is a reminder that your installment of <strong>₹%s</strong> was due on <strong>%s</strong> and remains unpaid.</p>" +
-            "   <div style='background:#fff1f2;padding:20px;border-left:4px solid #dc2626;border-radius:8px;margin:20px 0;'>" +
-            "       <p style='margin:0;color:#991b1b;'><strong>Status:</strong> OVERDUE</p>" +
-            "       <p style='margin:5px 0;color:#991b1b;'><strong>Amount Due:</strong> ₹%s</p>" +
-            "       <p style='margin:5px 0;color:#991b1b;'><strong>Original Due Date:</strong> %s</p>" +
-            "   </div>" +
-            "   <p>Please complete your payment at the earliest to ensure your admission remains active and avoid any disruption to your course access.</p>" +
-            "   <p>If you have already made the payment, please ignore this email or contact your counselor for confirmation.</p>" +
-            "   <br/><p>Best regards,<br/>LMS Admissions Team</p>" +
-            "</div>",
-            name, amount, dueDate, amount, dueDate
-        );
-        sendEmail(to, subject, body);
+        Context context = new Context();
+        context.setVariable("name", name);
+        context.setVariable("amount", amount);
+        context.setVariable("dueDate", dueDate);
+        
+        String body = templateEngine.process("emails/payment-reminder", context);
+        sendEmail(to, "Payment Reminder | Gyantric CRM", body);
     }
 }
