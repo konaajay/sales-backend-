@@ -222,7 +222,7 @@ public class PaymentController {
             String sessionId = (cfOrder != null) ? cfOrder.get("payment_session_id") : null;
             
             if (sessionId != null && !sessionId.isBlank()) {
-                response.put("paymentSessionId", sessionId);
+                response.put("payment_session_id", sessionId);
                 log.info("Successfully attached Payment Session ID for Order: {}", orderId);
             } else {
                 log.warn("Cashfree Order found but NO payment_session_id returned for Order: {}", orderId);
