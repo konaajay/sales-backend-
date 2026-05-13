@@ -163,6 +163,7 @@ public class LeadPaymentService {
 
         Map<String, String> result = new HashMap<>();
         result.put("payment_session_id", cfResponse.getPayment_session_id());
+        result.put("paymentSessionId", cfResponse.getPayment_session_id());
         result.put("order_id", orderId);
         result.put("payment_url", frontendUrl + "/payment-instruction/" + orderId);
         return result;
@@ -577,6 +578,7 @@ public class LeadPaymentService {
         }
  
         response.put("payment_session_id", sessionId);
+        response.put("paymentSessionId", sessionId);
         response.put("order_id", gatewayOrderId);
         return response;
     }
