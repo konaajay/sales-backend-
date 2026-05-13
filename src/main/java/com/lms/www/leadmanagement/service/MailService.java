@@ -22,7 +22,7 @@ public class MailService {
     @Value("${spring.mail.username}")
     private String fromEmail;
 
-    @Value("${app.frontend-url:http://localhost:3000}")
+    @Value("${app.frontend-url:http://100.30.239.118}")
     private String frontendUrl;
 
     public void sendEmail(String to, String subject, String body) {
@@ -34,7 +34,7 @@ public class MailService {
             helper.setTo(to);
             helper.setSubject(subject);
             helper.setText(body, true);
-            
+
             mailSender.send(message);
             log.info("Successfully sent email to: {}", to);
         } catch (Exception e) {
@@ -57,7 +57,7 @@ public class MailService {
         context.setVariable("email", to);
         context.setVariable("password", password);
         context.setVariable("loginUrl", frontendUrl + "/login");
-        
+
         String body = templateEngine.process("emails/welcome-email", context);
         sendEmail(to, "Welcome to Gyantric CRM | Your Account is Ready", body);
     }
@@ -67,7 +67,7 @@ public class MailService {
         Context context = new Context();
         context.setVariable("name", name);
         context.setVariable("otp", otp);
-        
+
         String body = templateEngine.process("emails/otp-email", context);
         sendEmail(to, "Your Verification Code | Gyantric CRM", body);
     }
@@ -78,7 +78,7 @@ public class MailService {
         context.setVariable("name", name);
         context.setVariable("amount", amount);
         context.setVariable("dueDate", dueDate);
-        
+
         String body = templateEngine.process("emails/payment-reminder", context);
         sendEmail(to, "Payment Reminder | Gyantric CRM", body);
     }

@@ -35,11 +35,12 @@ public class LeadPaymentService {
     @Value("${cashfree.webhook.url}")
     private String webhookUrl;
 
-    @Value("${app.frontend-url}")
+    @Value("${app.frontend-url:http://100.30.239.118}")
     private String frontendUrl;
 
     @Transactional
-    public Map<String, String> createCashfreeOrder(Long leadId, BigDecimal amount, String type, List<Map<String, Object>> plannedInstallments, BigDecimal totalAmount, BigDecimal discount) {
+    public Map<String, String> createCashfreeOrder(Long leadId, BigDecimal amount, String type,
+            List<Map<String, Object>> plannedInstallments, BigDecimal totalAmount, BigDecimal discount) {
         Lead lead = leadRepository.findById(leadId)
                 .orElseThrow(() -> new ResourceNotFoundException("Lead not found"));
 
@@ -55,7 +56,7 @@ public class LeadPaymentService {
         // --- STRICT ACCOUNTING VALIDATION ---
         BigDecimal finalSettlement = (totalAmount != null ? totalAmount : BigDecimal.ZERO)
                 .subtract(discount != null ? discount : BigDecimal.ZERO);
-        
+
         BigDecimal totalPlanned = amount;
         if (plannedInstallments != null) {
             for (Map<String, Object> inst : plannedInstallments) {
@@ -66,12 +67,14 @@ public class LeadPaymentService {
         // Fix: totalPlanned already includes 'amount' from line 59
         BigDecimal totalAccounted = totalPlanned;
         if (finalSettlement.compareTo(BigDecimal.ZERO) > 0 && totalAccounted.compareTo(finalSettlement) != 0) {
-            throw new InvalidRequestException("Accounting Protocol Violation: Total Commitment (\u20B9" + totalAccounted + ") does not match Final Settlement (\u20B9" + finalSettlement + "). Remaining to plan: \u20B9" + finalSettlement.subtract(amount));
+            throw new InvalidRequestException("Accounting Protocol Violation: Total Commitment (\u20B9" + totalAccounted
+                    + ") does not match Final Settlement (\u20B9" + finalSettlement + "). Remaining to plan: \u20B9"
+                    + finalSettlement.subtract(amount));
         }
         // ------------------------------------
 
         String orderId = "ORDER_" + leadId + "_" + System.currentTimeMillis();
-        
+
         // Set order expiry to 48 hours from now with timezone offset
         String expiryTime = java.time.ZonedDateTime.now().plusHours(48)
                 .format(java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME);
@@ -82,8 +85,8 @@ public class LeadPaymentService {
             cleanPhone = cleanPhone.substring(cleanPhone.length() - 10);
         }
 
-        com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest request = 
-            com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.builder()
+        com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest request = com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest
+                .builder()
                 .order_id(orderId)
                 .order_amount(amount)
                 .order_currency("INR")
@@ -123,7 +126,7 @@ public class LeadPaymentService {
             for (Map<String, Object> inst : plannedInstallments) {
                 BigDecimal instAmount = new BigDecimal(inst.get("amount").toString());
                 totalCommitment = totalCommitment.add(instAmount);
-                
+
                 String dueStr = (String) inst.get("dueDate");
                 LocalDateTime dueDate = null;
                 if (dueStr != null && !dueStr.isBlank()) {
@@ -133,7 +136,8 @@ public class LeadPaymentService {
                         log.warn(">>> Failed to parse due date: {}. Using null.", dueStr);
                     }
                 }
-                if (firstInstallmentDate == null) firstInstallmentDate = dueDate;
+                if (firstInstallmentDate == null)
+                    firstInstallmentDate = dueDate;
 
                 paymentRepository.save(Payment.builder()
                         .leadId(leadId)
@@ -143,7 +147,7 @@ public class LeadPaymentService {
                         .dueDate(dueDate)
                         .note("Planned during initial link generation")
                         .build());
-                
+
                 if (dueDate != null) {
                     createLeadTask(lead, dueDate, "EMI Collection - Planned", "EMI_COLLECTION");
                 }
@@ -151,7 +155,8 @@ public class LeadPaymentService {
         }
 
         // Initialize/Sync Student Fee Structure so it shows in dashboard immediately
-        syncStudentFee(lead, BigDecimal.ZERO, totalAmount != null ? totalAmount : totalCommitment, discount, firstInstallmentDate);
+        syncStudentFee(lead, BigDecimal.ZERO, totalAmount != null ? totalAmount : totalCommitment, discount,
+                firstInstallmentDate);
 
         // AUTO-EMAIL student the payment request link
         sendPaymentRequestEmail(lead, amount, orderId);
@@ -166,7 +171,7 @@ public class LeadPaymentService {
     @Transactional
     public Map<String, Object> verifyAndUpdatePayment(String orderId) {
         com.lms.www.leadmanagement.dto.payment.CashfreeOrderResponse cfOrder = cashfreeService.getOrder(orderId);
-        
+
         Map<String, Object> result = new HashMap<>();
         result.put("orderId", orderId);
         result.put("gatewayStatus", cfOrder.getOrder_status());
@@ -176,17 +181,20 @@ public class LeadPaymentService {
                     .orElseThrow(() -> new ResourceNotFoundException("Payment record not found in DB"));
 
             if (p.getStatus() != Payment.Status.PAID && p.getStatus() != Payment.Status.SUCCESS) {
-                updatePaymentStatus(p.getId(), "PAID", "CASHFREE_VERIFIED", "Manual Verification Success", p.getAmount(), null);
+                updatePaymentStatus(p.getId(), "PAID", "CASHFREE_VERIFIED", "Manual Verification Success",
+                        p.getAmount(), null);
                 result.put("updated", true);
                 result.put("message", "Payment verified and database updated to PAID.");
             } else {
                 result.put("updated", false);
                 result.put("message", "Payment was already marked as PAID.");
             }
-        } else if ("FAILED".equalsIgnoreCase(cfOrder.getOrder_status()) || "CANCELLED".equalsIgnoreCase(cfOrder.getOrder_status())) {
+        } else if ("FAILED".equalsIgnoreCase(cfOrder.getOrder_status())
+                || "CANCELLED".equalsIgnoreCase(cfOrder.getOrder_status())) {
             Payment p = paymentRepository.findByPaymentGatewayId(orderId).orElse(null);
             if (p != null && p.getStatus() == Payment.Status.PENDING) {
-                updatePaymentStatus(p.getId(), "FAILED", "CASHFREE_VERIFIED", "Gateway reports failure: " + cfOrder.getOrder_status(), null, null);
+                updatePaymentStatus(p.getId(), "FAILED", "CASHFREE_VERIFIED",
+                        "Gateway reports failure: " + cfOrder.getOrder_status(), null, null);
                 result.put("updated", true);
                 result.put("message", "Payment marked as FAILED in database.");
             } else {
@@ -218,27 +226,34 @@ public class LeadPaymentService {
         String paymentUrl = frontendUrl + "/payment-instruction/" + orderId;
 
         String body = String.format(
-                "<div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden;'>" +
-                "  <div style='background: linear-gradient(135deg, #3b82f6 0%%, #2563eb 100%%); color: white; padding: 30px; text-align: center;'>" +
-                "    <h2 style='margin: 0; text-transform: uppercase; letter-spacing: 2px;'>Enrollment Protocol</h2>" +
-                "    <p style='margin: 10px 0 0; opacity: 0.9;'>Action required to secure your seat</p>" +
-                "  </div>" +
-                "  <div style='padding: 40px; line-height: 1.6; color: #1e293b;'>" +
-                "    <p>Hello <strong>%s</strong>,</p>" +
-                "    <p>To finalize your enrollment and secure your registration, please complete the initial commitment payment of <strong>₹%s</strong>.</p>" +
-                "    " +
-                "    <div style='margin: 30px 0; text-align: center;'>" +
-                "      <a href='%s' style='background-color: #3b82f6; color: white; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block; box-shadow: 0 4px 6px rgba(59, 130, 246, 0.2);'>PROCEED TO SECURE CHECKOUT</a>" +
-                "    </div>" +
-                "    " +
-                "    <p style='font-size: 14px; color: #64748b;'>If the button doesn't work, copy and paste this link: <br/> %s</p>" +
-                "    " +
-                "    <div style='border-top: 1px solid #f1f5f9; margin-top: 30px; padding-top: 20px; font-size: 12px; color: #94a3b8;'>" +
-                "      Order reference: %s<br/>" +
-                "      This link is secure and valid for 48 hours." +
-                "    </div>" +
-                "  </div>" +
-                "</div>",
+                "<div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden;'>"
+                        +
+                        "  <div style='background: linear-gradient(135deg, #3b82f6 0%%, #2563eb 100%%); color: white; padding: 30px; text-align: center;'>"
+                        +
+                        "    <h2 style='margin: 0; text-transform: uppercase; letter-spacing: 2px;'>Enrollment Protocol</h2>"
+                        +
+                        "    <p style='margin: 10px 0 0; opacity: 0.9;'>Action required to secure your seat</p>" +
+                        "  </div>" +
+                        "  <div style='padding: 40px; line-height: 1.6; color: #1e293b;'>" +
+                        "    <p>Hello <strong>%s</strong>,</p>" +
+                        "    <p>To finalize your enrollment and secure your registration, please complete the initial commitment payment of <strong>₹%s</strong>.</p>"
+                        +
+                        "    " +
+                        "    <div style='margin: 30px 0; text-align: center;'>" +
+                        "      <a href='%s' style='background-color: #3b82f6; color: white; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block; box-shadow: 0 4px 6px rgba(59, 130, 246, 0.2);'>PROCEED TO SECURE CHECKOUT</a>"
+                        +
+                        "    </div>" +
+                        "    " +
+                        "    <p style='font-size: 14px; color: #64748b;'>If the button doesn't work, copy and paste this link: <br/> %s</p>"
+                        +
+                        "    " +
+                        "    <div style='border-top: 1px solid #f1f5f9; margin-top: 30px; padding-top: 20px; font-size: 12px; color: #94a3b8;'>"
+                        +
+                        "      Order reference: %s<br/>" +
+                        "      This link is secure and valid for 48 hours." +
+                        "    </div>" +
+                        "  </div>" +
+                        "</div>",
                 lead.getName(), amount, paymentUrl, paymentUrl, orderId);
 
         if (lead.getEmail() != null && !lead.getEmail().isBlank()) {
@@ -256,13 +271,13 @@ public class LeadPaymentService {
                 .orElseThrow(() -> new ResourceNotFoundException("Payment not found"));
 
         String orderId = "REMI_" + payment.getId() + "_" + System.currentTimeMillis();
-        
+
         // Set order expiry to 48 hours from now with timezone offset
         String expiryTime = java.time.ZonedDateTime.now().plusHours(48)
                 .format(java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME);
 
-        com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest request = 
-            com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.builder()
+        com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest request = com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest
+                .builder()
                 .order_id(orderId)
                 .order_amount(payment.getAmount())
                 .order_currency("INR")
@@ -281,7 +296,7 @@ public class LeadPaymentService {
         leadRepository.findById(payment.getLeadId()).ifPresent(l -> {
             request.getCustomer_details().setCustomer_name(l.getName());
             request.getCustomer_details().setCustomer_email(l.getEmail());
-            
+
             // Sanitize phone number for Cashfree (must be 10 digits)
             String cleanPhone = l.getMobile() != null ? l.getMobile().replaceAll("[^0-9]", "") : "";
             if (cleanPhone.length() > 10) {
@@ -308,54 +323,62 @@ public class LeadPaymentService {
 
         Map<String, String> linkResult = generatePaymentLink(payment.getId());
         String paymentUrl = linkResult.get("payment_url");
-        
+
         String subject = "Payment Reminder: Installment Due for " + lead.getName();
-        
+
         StudentFee fee = studentFeeRepository.findByLeadId(lead.getId()).orElse(null);
         BigDecimal balance = (fee != null) ? fee.getBalanceAmount() : BigDecimal.ZERO;
 
         String body = String.format(
-                "<div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden;'>" +
-                "  <div style='background: #1e293b; color: white; padding: 30px; text-align: center;'>" +
-                "    <h2 style='margin: 0; text-transform: uppercase; letter-spacing: 2px;'>Installment Reminder</h2>" +
-                "    <p style='margin: 10px 0 0; opacity: 0.9;'>Payment due for your enrollment</p>" +
-                "  </div>" +
-                "  <div style='padding: 40px; line-height: 1.6; color: #1e293b;'>" +
-                "    <p>Hello <strong>%s</strong>,</p>" +
-                "    <p>This is a reminder that your next installment of <strong>₹%s</strong> is due.</p>" +
-                "    " +
-                "    <div style='background: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;'>" +
-                "       <table style='width: 100%%; font-size: 14px;'>" +
-                "           <tr><td style='color: #64748b;'>Installment Amount:</td><td style='text-align: right; font-weight: bold;'>₹%s</td></tr>" +
-                "           <tr><td style='color: #64748b;'>Due Date:</td><td style='text-align: right; font-weight: bold;'>%s</td></tr>" +
-                "           <tr><td style='color: #64748b;'>Remaining Balance:</td><td style='text-align: right; font-weight: bold;'>₹%s</td></tr>" +
-                "       </table>" +
-                "    </div>" +
-                "    " +
-                "    <div style='margin: 30px 0; text-align: center;'>" +
-                "      <a href='%s' style='background-color: #3b82f6; color: white; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;'>PAY INSTALLMENT SECURELY</a>" +
-                "    </div>" +
-                "    " +
-                "    <p style='font-size: 14px; color: #64748b;'>Copy link: %s</p>" +
-                "    " +
-                "    <div style='border-top: 1px solid #f1f5f9; margin-top: 30px; padding-top: 20px; font-size: 12px; color: #94a3b8;'>" +
-                "      Thank you for staying on track with your education journey." +
-                "    </div>" +
-                "  </div>" +
-                "</div>",
-                lead.getName(), payment.getAmount(), payment.getAmount(), 
+                "<div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden;'>"
+                        +
+                        "  <div style='background: #1e293b; color: white; padding: 30px; text-align: center;'>" +
+                        "    <h2 style='margin: 0; text-transform: uppercase; letter-spacing: 2px;'>Installment Reminder</h2>"
+                        +
+                        "    <p style='margin: 10px 0 0; opacity: 0.9;'>Payment due for your enrollment</p>" +
+                        "  </div>" +
+                        "  <div style='padding: 40px; line-height: 1.6; color: #1e293b;'>" +
+                        "    <p>Hello <strong>%s</strong>,</p>" +
+                        "    <p>This is a reminder that your next installment of <strong>₹%s</strong> is due.</p>" +
+                        "    " +
+                        "    <div style='background: #f8fafc; padding: 20px; border-radius: 8px; margin: 20px 0;'>" +
+                        "       <table style='width: 100%%; font-size: 14px;'>" +
+                        "           <tr><td style='color: #64748b;'>Installment Amount:</td><td style='text-align: right; font-weight: bold;'>₹%s</td></tr>"
+                        +
+                        "           <tr><td style='color: #64748b;'>Due Date:</td><td style='text-align: right; font-weight: bold;'>%s</td></tr>"
+                        +
+                        "           <tr><td style='color: #64748b;'>Remaining Balance:</td><td style='text-align: right; font-weight: bold;'>₹%s</td></tr>"
+                        +
+                        "       </table>" +
+                        "    </div>" +
+                        "    " +
+                        "    <div style='margin: 30px 0; text-align: center;'>" +
+                        "      <a href='%s' style='background-color: #3b82f6; color: white; padding: 16px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;'>PAY INSTALLMENT SECURELY</a>"
+                        +
+                        "    </div>" +
+                        "    " +
+                        "    <p style='font-size: 14px; color: #64748b;'>Copy link: %s</p>" +
+                        "    " +
+                        "    <div style='border-top: 1px solid #f1f5f9; margin-top: 30px; padding-top: 20px; font-size: 12px; color: #94a3b8;'>"
+                        +
+                        "      Thank you for staying on track with your education journey." +
+                        "    </div>" +
+                        "  </div>" +
+                        "</div>",
+                lead.getName(), payment.getAmount(), payment.getAmount(),
                 payment.getDueDate() != null ? payment.getDueDate().toLocalDate() : "N/A",
                 balance, paymentUrl, paymentUrl);
 
         if (lead.getEmail() != null && !lead.getEmail().isBlank()) {
             mailService.sendEmail(lead.getEmail(), subject, body);
         }
-        
+
         payment.setReminderSent(true);
         paymentRepository.save(payment);
-        
+
         // Update task status or create a new follow-up if needed
-        createLeadTask(lead, LocalDateTime.now(), "Installment Reminder Sent - ₹" + payment.getAmount(), "EMI_COLLECTION");
+        createLeadTask(lead, LocalDateTime.now(), "Installment Reminder Sent - ₹" + payment.getAmount(),
+                "EMI_COLLECTION");
     }
 
     @Transactional
@@ -374,32 +397,41 @@ public class LeadPaymentService {
         String subject = "Admission Confirmed - Official Invoice #" + payment.getPaymentGatewayId();
 
         String body = String.format(
-                "<div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;'>" +
-                "  <div style='background-color: #2e7d32; color: white; padding: 20px; text-align: center;'>" +
-                "    <h2 style='margin: 0;'>ADMISSION CONFIRMED</h2>" +
-                "    <p style='margin: 5px 0 0;'>Official Payment Receipt</p>" +
-                "  </div>" +
-                "  <div style='padding: 30px; line-height: 1.6; color: #333;'>" +
-                "    <p>Dear <strong>%s</strong>,</p>" +
-                "    <p>We are delighted to confirm that your payment has been successfully verified. Your admission is now official.</p>" +
-                "    <div style='background-color: #f9f9f9; padding: 20px; border-radius: 4px; margin: 20px 0;'>" +
-                "      <table style='width: 100%%; border-collapse: collapse;'>" +
-                "        <tr><td style='padding: 8px 0; color: #666;'>Invoice ID:</td><td style='padding: 8px 0; text-align: right; font-weight: bold;'>%s</td></tr>" +
-                "        <tr><td style='padding: 8px 0; color: #666;'>Amount Paid:</td><td style='padding: 8px 0; text-align: right; color: #2e7d32; font-weight: bold;'>₹%s</td></tr>" +
-                "        <tr><td style='padding: 8px 0; color: #666;'>Method:</td><td style='padding: 8px 0; text-align: right;'>%s</td></tr>" +
-                "        <tr><td style='padding: 8px 0; color: #666;'>Status:</td><td style='padding: 8px 0; text-align: right; color: #2e7d32; font-weight: bold;'>SUCCESSFUL</td></tr>" +
-                "      </table>" +
-                "    </div>" +
-                "    <p>Your admission is confirmed. Our team will contact you shortly to discuss the next steps.</p>" +
-                "    <p style='margin-top: 30px;'>Best Regards,<br/><strong>The Admissions Team</strong></p>" +
-                "  </div>" +
-                "  <div style='background-color: #f5f5f5; color: #888; padding: 15px; text-align: center; font-size: 12px; border-top: 1px solid #e0e0e0;'>" +
-                "    This is a system-generated invoice for your transaction. No signature required." +
-                "  </div>" +
-                "</div>",
+                "<div style='font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 8px; overflow: hidden;'>"
+                        +
+                        "  <div style='background-color: #2e7d32; color: white; padding: 20px; text-align: center;'>" +
+                        "    <h2 style='margin: 0;'>ADMISSION CONFIRMED</h2>" +
+                        "    <p style='margin: 5px 0 0;'>Official Payment Receipt</p>" +
+                        "  </div>" +
+                        "  <div style='padding: 30px; line-height: 1.6; color: #333;'>" +
+                        "    <p>Dear <strong>%s</strong>,</p>" +
+                        "    <p>We are delighted to confirm that your payment has been successfully verified. Your admission is now official.</p>"
+                        +
+                        "    <div style='background-color: #f9f9f9; padding: 20px; border-radius: 4px; margin: 20px 0;'>"
+                        +
+                        "      <table style='width: 100%%; border-collapse: collapse;'>" +
+                        "        <tr><td style='padding: 8px 0; color: #666;'>Invoice ID:</td><td style='padding: 8px 0; text-align: right; font-weight: bold;'>%s</td></tr>"
+                        +
+                        "        <tr><td style='padding: 8px 0; color: #666;'>Amount Paid:</td><td style='padding: 8px 0; text-align: right; color: #2e7d32; font-weight: bold;'>₹%s</td></tr>"
+                        +
+                        "        <tr><td style='padding: 8px 0; color: #666;'>Method:</td><td style='padding: 8px 0; text-align: right;'>%s</td></tr>"
+                        +
+                        "        <tr><td style='padding: 8px 0; color: #666;'>Status:</td><td style='padding: 8px 0; text-align: right; color: #2e7d32; font-weight: bold;'>SUCCESSFUL</td></tr>"
+                        +
+                        "      </table>" +
+                        "    </div>" +
+                        "    <p>Your admission is confirmed. Our team will contact you shortly to discuss the next steps.</p>"
+                        +
+                        "    <p style='margin-top: 30px;'>Best Regards,<br/><strong>The Admissions Team</strong></p>" +
+                        "  </div>" +
+                        "  <div style='background-color: #f5f5f5; color: #888; padding: 15px; text-align: center; font-size: 12px; border-top: 1px solid #e0e0e0;'>"
+                        +
+                        "    This is a system-generated invoice for your transaction. No signature required." +
+                        "  </div>" +
+                        "</div>",
                 lead.getName(), payment.getPaymentGatewayId(), payment.getAmount(),
                 (payment.getPaymentMethod() != null ? payment.getPaymentMethod() : "MANUAL"));
-        
+
         // Async dispatch
         if (lead.getEmail() != null && !lead.getEmail().isBlank()) {
             try {
@@ -426,7 +458,7 @@ public class LeadPaymentService {
     }
 
     @Transactional(readOnly = true)
-    public List<PaymentDTO> getFilteredPaymentHistory(Long managerId, Long userId, Long tlId, Long associateId, 
+    public List<PaymentDTO> getFilteredPaymentHistory(Long managerId, Long userId, Long tlId, Long associateId,
             LocalDateTime start, LocalDateTime end, String status) {
         User requester = securityService.getCurrentUser();
         java.util.Set<Long> targetUserIds = securityService.getAllowedUserIds(requester);
@@ -447,9 +479,11 @@ public class LeadPaymentService {
             targetUserIds.add(managerId);
         }
 
-        boolean isGlobalAdmin = securityService.isAdmin(requester) && managerId == null && tlId == null && associateId == null && userId == null;
+        boolean isGlobalAdmin = securityService.isAdmin(requester) && managerId == null && tlId == null
+                && associateId == null && userId == null;
 
-        Payment.Status pStatus = (status != null && !status.isEmpty()) ? Payment.Status.valueOf(status.toUpperCase()) : null;
+        Payment.Status pStatus = (status != null && !status.isEmpty()) ? Payment.Status.valueOf(status.toUpperCase())
+                : null;
 
         // Optimization: Use optimized lead fetching
         if (isGlobalAdmin) {
@@ -457,13 +491,15 @@ public class LeadPaymentService {
                     .map(p -> convertToDTO(p)).collect(Collectors.toList());
         } else {
             // Optimized query for hierarchy using direct JOIN
-            return paymentRepository.findFilteredByUserHierarchy(new java.util.ArrayList<>(targetUserIds), start, end, pStatus).stream()
+            return paymentRepository
+                    .findFilteredByUserHierarchy(new java.util.ArrayList<>(targetUserIds), start, end, pStatus).stream()
                     .map(p -> convertToDTO(p)).collect(Collectors.toList());
         }
     }
 
     @Transactional(readOnly = true)
-    public List<PaymentDTO> getFilteredPaymentHistoryForTL(String username, LocalDateTime start, LocalDateTime end, String status, Long userId) {
+    public List<PaymentDTO> getFilteredPaymentHistoryForTL(String username, LocalDateTime start, LocalDateTime end,
+            String status, Long userId) {
         User tl = userRepository.findByEmail(username).orElseThrow();
         // TL looking at their team, we pass tl.getId() as tlId
         return getFilteredPaymentHistory(null, userId, tl.getId(), null, start, end, status);
@@ -474,7 +510,7 @@ public class LeadPaymentService {
             PaymentSplitRequest splitRequest) {
         Lead lead = leadRepository.findById(leadId)
                 .orElseThrow(() -> new ResourceNotFoundException("Lead not found"));
-        
+
         User requester = securityService.getCurrentUser();
         if (lead.getAssignedTo() != null) {
             securityService.validateAccess(requester, lead.getAssignedTo().getId());
@@ -517,9 +553,10 @@ public class LeadPaymentService {
         String status = payload.get("status");
         String method = payload.get("method");
         String note = payload.get("note");
-        BigDecimal amount = payload.containsKey("actualPaidAmount") ? new BigDecimal(payload.get("actualPaidAmount")) : null;
+        BigDecimal amount = payload.containsKey("actualPaidAmount") ? new BigDecimal(payload.get("actualPaidAmount"))
+                : null;
         String nextDue = payload.get("nextDueDate");
-        
+
         return updatePaymentStatus(paymentId, status, method, note, amount, nextDue);
     }
 
@@ -554,16 +591,18 @@ public class LeadPaymentService {
 
         // Handle partial payment vs full payment
         BigDecimal paidThisTime = actualPaidAmount != null ? actualPaidAmount : payment.getAmount();
-        
-        if (actualPaidAmount != null && actualPaidAmount.compareTo(BigDecimal.ZERO) > 0 
+
+        if (actualPaidAmount != null && actualPaidAmount.compareTo(BigDecimal.ZERO) > 0
                 && actualPaidAmount.compareTo(payment.getAmount()) < 0) {
             handlePartialPayment(payment, lead, actualPaidAmount, nextDueDateStr);
         } else {
             handleFullPayment(payment, lead);
         }
 
-        // AUTO-STATUS LOGIC: The initial token payment successfully secures the enrollment.
-        // Convert the lead immediately. The StudentFee ledger will handle remaining EMI tracking.
+        // AUTO-STATUS LOGIC: The initial token payment successfully secures the
+        // enrollment.
+        // Convert the lead immediately. The StudentFee ledger will handle remaining EMI
+        // tracking.
         lead.setStatus("CONVERTED");
         leadRepository.save(lead);
     }
@@ -576,7 +615,7 @@ public class LeadPaymentService {
         LocalDateTime nextDue = null;
         if (nextDueDateStr != null && !nextDueDateStr.isEmpty()) {
             nextDue = LocalDateTime.parse(nextDueDateStr.contains("T") ? nextDueDateStr : nextDueDateStr + "T10:00:00");
-            
+
             Payment nextInstallment = Payment.builder()
                     .leadId(payment.getLeadId())
                     .amount(remaining)
@@ -609,14 +648,15 @@ public class LeadPaymentService {
         // 2. Smart-complete the specific EMI task if this is an installment payment
         if (payment.getDueDate() != null) {
             leadTaskRepository.findByLeadId(lead.getId()).stream()
-                .filter(t -> t.getStatus() == LeadTask.TaskStatus.PENDING)
-                .filter(t -> "EMI_COLLECTION".equalsIgnoreCase(t.getTaskType()))
-                .filter(t -> t.getDueDate() != null && t.getDueDate().toLocalDate().isEqual(payment.getDueDate().toLocalDate()))
-                .findFirst()
-                .ifPresent(t -> {
-                    t.setStatus(LeadTask.TaskStatus.COMPLETED);
-                    leadTaskRepository.save(t);
-                });
+                    .filter(t -> t.getStatus() == LeadTask.TaskStatus.PENDING)
+                    .filter(t -> "EMI_COLLECTION".equalsIgnoreCase(t.getTaskType()))
+                    .filter(t -> t.getDueDate() != null
+                            && t.getDueDate().toLocalDate().isEqual(payment.getDueDate().toLocalDate()))
+                    .findFirst()
+                    .ifPresent(t -> {
+                        t.setStatus(LeadTask.TaskStatus.COMPLETED);
+                        leadTaskRepository.save(t);
+                    });
         }
 
         sendAdmissionSuccessEmail(lead, payment);
@@ -627,11 +667,12 @@ public class LeadPaymentService {
     public PaymentDTO recordManualPayment(Map<String, Object> data) {
         Long leadId = Long.valueOf(data.get("leadId").toString());
         BigDecimal amount = new BigDecimal(data.get("amount").toString());
-        BigDecimal totalAmount = data.containsKey("totalAmount") ? new BigDecimal(data.get("totalAmount").toString()) : amount;
-        
+        BigDecimal totalAmount = data.containsKey("totalAmount") ? new BigDecimal(data.get("totalAmount").toString())
+                : amount;
+
         Lead lead = leadRepository.findById(leadId).orElseThrow(() -> new ResourceNotFoundException("Lead not found"));
         User requester = securityService.getCurrentUser();
-        
+
         if (lead.getAssignedTo() != null) {
             securityService.validateAccess(requester, lead.getAssignedTo().getId());
         }
@@ -654,7 +695,8 @@ public class LeadPaymentService {
         return convertToDTO(saved);
     }
 
-    private void syncStudentFee(Lead lead, BigDecimal paidAmount, BigDecimal totalAmount, BigDecimal discount, LocalDateTime nextDue) {
+    private void syncStudentFee(Lead lead, BigDecimal paidAmount, BigDecimal totalAmount, BigDecimal discount,
+            LocalDateTime nextDue) {
         StudentFee fee = studentFeeRepository.findByLeadId(lead.getId())
                 .orElse(StudentFee.builder()
                         .leadId(lead.getId())
@@ -679,7 +721,7 @@ public class LeadPaymentService {
 
         BigDecimal currentPaid = fee.getPaidAmount() != null ? fee.getPaidAmount() : BigDecimal.ZERO;
         fee.setPaidAmount(currentPaid.add(paidAmount));
-        
+
         // Calculate Installments
         List<Payment> allPayments = paymentRepository.findByLeadId(lead.getId());
         int total = allPayments.size();
@@ -691,7 +733,8 @@ public class LeadPaymentService {
         fee.setPaidInstallments(paidCount);
 
         if (fee.getTotalAmount() != null) {
-            BigDecimal netTotal = fee.getTotalAmount().subtract(fee.getDiscount() != null ? fee.getDiscount() : BigDecimal.ZERO);
+            BigDecimal netTotal = fee.getTotalAmount()
+                    .subtract(fee.getDiscount() != null ? fee.getDiscount() : BigDecimal.ZERO);
             fee.setBalanceAmount(netTotal.subtract(fee.getPaidAmount()));
         }
         if (nextDue != null) {
@@ -722,7 +765,8 @@ public class LeadPaymentService {
     }
 
     private void createLeadTask(Lead lead, LocalDateTime dueDate, String title, String type) {
-        if (dueDate == null) return;
+        if (dueDate == null)
+            return;
         LeadTask task = LeadTask.builder()
                 .lead(lead)
                 .title(title)
@@ -732,9 +776,10 @@ public class LeadPaymentService {
                 .assignedTo(lead.getAssignedTo())
                 .build();
         leadTaskRepository.save(task);
-        
+
         // Sync the lead's follow-up date to ensure it appears in "Today's Focus"
-        if (lead.getFollowUpDate() == null || dueDate.isBefore(lead.getFollowUpDate()) || dueDate.toLocalDate().isEqual(java.time.LocalDate.now())) {
+        if (lead.getFollowUpDate() == null || dueDate.isBefore(lead.getFollowUpDate())
+                || dueDate.toLocalDate().isEqual(java.time.LocalDate.now())) {
             lead.setFollowUpDate(dueDate);
             leadRepository.save(lead);
         }
@@ -757,7 +802,10 @@ public class LeadPaymentService {
 
         for (int i = 0; i < splitRequest.getInstallments().size(); i++) {
             PaymentSplitRequest.InstallmentPart part = splitRequest.getInstallments().get(i);
-            LocalDateTime dDate = part.getDueDate() != null ? LocalDateTime.parse(part.getDueDate().contains("T") ? part.getDueDate() : part.getDueDate() + "T10:00:00") : null;
+            LocalDateTime dDate = part.getDueDate() != null
+                    ? LocalDateTime.parse(
+                            part.getDueDate().contains("T") ? part.getDueDate() : part.getDueDate() + "T10:00:00")
+                    : null;
 
             if (i == 0) {
                 original.setAmount(part.getAmount());
@@ -785,7 +833,7 @@ public class LeadPaymentService {
         List<PaymentDTO> payments = paymentRepository.findByLeadId(leadId).stream()
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
-        
+
         Map<String, Object> response = new HashMap<>();
         if (fee != null) {
             Map<String, Object> feeMap = new HashMap<>();
@@ -797,16 +845,20 @@ public class LeadPaymentService {
             feeMap.put("paymentStatus", fee.getPaymentStatus());
             response.put("fee", feeMap);
         } else if (!payments.isEmpty()) {
-            // Fallback: If installments exist but fee record is missing, 
+            // Fallback: If installments exist but fee record is missing,
             // calculate a virtual fee summary from the installments
-            BigDecimal total = payments.stream().map(p -> p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO).reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal paid = payments.stream().filter(p -> "PAID".equalsIgnoreCase(p.getStatus())).map(p -> p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO).reduce(BigDecimal.ZERO, BigDecimal::add);
-            
+            BigDecimal total = payments.stream().map(p -> p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            BigDecimal paid = payments.stream().filter(p -> "PAID".equalsIgnoreCase(p.getStatus()))
+                    .map(p -> p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+
             Map<String, Object> feeMap = new HashMap<>();
             feeMap.put("totalAmount", total);
             feeMap.put("paidAmount", paid);
             feeMap.put("balanceAmount", total.subtract(paid));
-            feeMap.put("nextDueDate", payments.stream().filter(p -> "PENDING".equalsIgnoreCase(p.getStatus())).map(p -> p.getDueDate()).filter(Objects::nonNull).min(Comparator.naturalOrder()).orElse(null));
+            feeMap.put("nextDueDate", payments.stream().filter(p -> "PENDING".equalsIgnoreCase(p.getStatus()))
+                    .map(p -> p.getDueDate()).filter(Objects::nonNull).min(Comparator.naturalOrder()).orElse(null));
             response.put("fee", feeMap);
         } else {
             response.put("fee", null);
