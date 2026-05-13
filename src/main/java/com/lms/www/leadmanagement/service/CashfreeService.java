@@ -45,11 +45,13 @@ public class CashfreeService {
                 getBaseUrl(), entity, CashfreeOrderResponse.class);
             return response.getBody();
         } catch (org.springframework.web.client.HttpStatusCodeException e) {
-            log.error("Cashfree API Error [{}]: {}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new RuntimeException("Cashfree Error: " + e.getResponseBodyAsString());
+            String errorBody = e.getResponseBodyAsString();
+            log.error("Cashfree API Error [{}]: {}", e.getStatusCode(), errorBody);
+            // Try to extract a clean message from Cashfree JSON if possible, otherwise send raw body
+            throw new RuntimeException("Cashfree Payment Error: " + errorBody);
         } catch (Exception e) {
-            log.error("Unexpected Error creating Cashfree order: {}", e.getMessage());
-            throw new RuntimeException("Internal Error: Failed to connect to payment gateway");
+            log.error("Unexpected Error creating Cashfree order: {}", e.getMessage(), e);
+            throw new RuntimeException("Internal Error: " + e.getMessage());
         }
     }
 

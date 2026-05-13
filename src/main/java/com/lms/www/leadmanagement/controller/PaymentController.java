@@ -102,7 +102,14 @@ public class PaymentController {
             discount = new java.math.BigDecimal(payload.get("discount").toString());
         }
         
-        return ResponseEntity.ok(leadPaymentService.createCashfreeOrder(leadId, amount, type, installments, totalAmount, discount));
+        try {
+            return ResponseEntity.ok(leadPaymentService.createCashfreeOrder(leadId, amount, type, installments, totalAmount, discount));
+        } catch (Exception e) {
+            log.error("Payment Creation Error: {}", e.getMessage());
+            Map<String, String> error = new HashMap<>();
+            error.put("error", e.getMessage());
+            return ResponseEntity.status(500).body(error);
+        }
     }
 
     @PostMapping("/api/payments/order/{orderId}/verify")

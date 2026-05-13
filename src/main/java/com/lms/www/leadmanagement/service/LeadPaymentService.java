@@ -76,6 +76,12 @@ public class LeadPaymentService {
         String expiryTime = java.time.ZonedDateTime.now().plusHours(48)
                 .format(java.time.format.DateTimeFormatter.ISO_OFFSET_DATE_TIME);
 
+        // Sanitize phone number for Cashfree (must be 10 digits)
+        String cleanPhone = lead.getMobile() != null ? lead.getMobile().replaceAll("[^0-9]", "") : "";
+        if (cleanPhone.length() > 10) {
+            cleanPhone = cleanPhone.substring(cleanPhone.length() - 10);
+        }
+
         com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest request = 
             com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.builder()
                 .order_id(orderId)
@@ -86,11 +92,11 @@ public class LeadPaymentService {
                         .customer_id("CUST_" + leadId)
                         .customer_name(lead.getName())
                         .customer_email(lead.getEmail())
-                        .customer_phone(lead.getMobile())
+                        .customer_phone(cleanPhone)
                         .build())
                 .order_meta(com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.OrderMeta.builder()
                         .return_url(frontendUrl + "/payment-status/" + orderId)
-                        .notify_url(webhookUrl != null && !webhookUrl.equals("placeholder") && !webhookUrl.isBlank() ? webhookUrl : null)
+                        .notify_url(webhookUrl != null && webhookUrl.startsWith("https://") ? webhookUrl : null)
                         .build())
                 .build();
 
@@ -267,7 +273,7 @@ public class LeadPaymentService {
                         .build())
                 .order_meta(com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.OrderMeta.builder()
                         .return_url(frontendUrl + "/payment-status/" + orderId)
-                        .notify_url(webhookUrl != null && !webhookUrl.equals("placeholder") && !webhookUrl.isBlank() ? webhookUrl : null)
+                        .notify_url(webhookUrl != null && webhookUrl.startsWith("https://") ? webhookUrl : null)
                         .build())
                 .build();
 
@@ -275,7 +281,13 @@ public class LeadPaymentService {
         leadRepository.findById(payment.getLeadId()).ifPresent(l -> {
             request.getCustomer_details().setCustomer_name(l.getName());
             request.getCustomer_details().setCustomer_email(l.getEmail());
-            request.getCustomer_details().setCustomer_phone(l.getMobile());
+            
+            // Sanitize phone number for Cashfree (must be 10 digits)
+            String cleanPhone = l.getMobile() != null ? l.getMobile().replaceAll("[^0-9]", "") : "";
+            if (cleanPhone.length() > 10) {
+                cleanPhone = cleanPhone.substring(cleanPhone.length() - 10);
+            }
+            request.getCustomer_details().setCustomer_phone(cleanPhone);
         });
 
         com.lms.www.leadmanagement.dto.payment.CashfreeOrderResponse cfResponse = cashfreeService.createOrder(request);
