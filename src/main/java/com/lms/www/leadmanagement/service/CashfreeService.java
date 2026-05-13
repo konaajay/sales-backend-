@@ -46,12 +46,24 @@ public class CashfreeService {
             return response.getBody();
         } catch (org.springframework.web.client.HttpStatusCodeException e) {
             String errorBody = e.getResponseBodyAsString();
-            log.error("Cashfree API Error [{}]: {}", e.getStatusCode(), errorBody);
-            // Try to extract a clean message from Cashfree JSON if possible, otherwise send raw body
-            throw new RuntimeException("Cashfree Payment Error: " + errorBody);
+            log.error("Cashfree API Rejection [{}]: {}", e.getStatusCode(), errorBody);
+            
+            String cleanMessage = "Gateway Error";
+            try {
+                // Quick extraction of message from JSON if it exists
+                if (errorBody.contains("\"message\"")) {
+                    int start = errorBody.indexOf("\"message\":\"") + 11;
+                    int end = errorBody.indexOf("\"", start);
+                    if (start > 10 && end > start) {
+                        cleanMessage = errorBody.substring(start, end);
+                    }
+                }
+            } catch (Exception ex) {}
+            
+            throw new RuntimeException("Cashfree rejection: " + cleanMessage + " (HTTP " + e.getStatusCode() + ")");
         } catch (Exception e) {
-            log.error("Unexpected Error creating Cashfree order: {}", e.getMessage(), e);
-            throw new RuntimeException("Internal Error: " + e.getMessage());
+            log.error("Networking/Unexpected Error communicating with Cashfree: {}", e.getMessage(), e);
+            throw new RuntimeException("Gateway Connectivity Error: " + e.getMessage());
         }
     }
 

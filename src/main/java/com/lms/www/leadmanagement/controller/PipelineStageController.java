@@ -62,9 +62,11 @@ public class PipelineStageController {
         
         if (stageDetails.getStatusValue() != null && !stageDetails.getStatusValue().equals(stage.getStatusValue())) {
             String statusToUse = stageDetails.getStatusValue();
-            try {
-                statusToUse = com.lms.www.leadmanagement.entity.LeadStatus.fromString(statusToUse).name();
-            } catch (Exception e) {}
+            com.lms.www.leadmanagement.entity.LeadStatus matchedStatus = com.lms.www.leadmanagement.entity.LeadStatus.fromString(statusToUse);
+            
+            if (matchedStatus != null) {
+                statusToUse = matchedStatus.name();
+            }
 
             if (pipelineStageRepository.existsByStatusValue(statusToUse)) {
                 return ResponseEntity.badRequest().body(com.lms.www.leadmanagement.dto.ApiResponse.error("Status value '" + statusToUse + "' already exists"));

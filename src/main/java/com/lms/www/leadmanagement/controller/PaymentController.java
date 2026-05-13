@@ -105,9 +105,10 @@ public class PaymentController {
         try {
             return ResponseEntity.ok(leadPaymentService.createCashfreeOrder(leadId, amount, type, installments, totalAmount, discount));
         } catch (Exception e) {
-            log.error("Payment Creation Error: {}", e.getMessage());
+            log.error("CRITICAL: Cashfree Order Initiation Failed for Lead {}: {}", leadId, e.getMessage(), e);
             Map<String, String> error = new HashMap<>();
-            error.put("error", e.getMessage());
+            error.put("error", "Internal Server Error: " + e.getMessage());
+            error.put("message", e.getMessage());
             return ResponseEntity.status(500).body(error);
         }
     }
