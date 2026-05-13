@@ -111,6 +111,7 @@ public class LeadPaymentService {
                 .amount(amount)
                 .status(Payment.Status.PENDING)
                 .paymentGatewayId(orderId)
+                .paymentSessionId(cfResponse.getPayment_session_id())
                 .paymentType(type != null ? type : "CASHFREE")
                 .build();
         paymentRepository.save(payment);
@@ -215,10 +216,15 @@ public class LeadPaymentService {
     }
 
     public Map<String, String> fetchCashfreeOrder(String orderId) {
-        com.lms.www.leadmanagement.dto.payment.CashfreeOrderResponse cfResponse = cashfreeService.getOrder(orderId);
+        Payment p = paymentRepository.findByPaymentGatewayId(orderId).orElse(null);
         Map<String, String> result = new HashMap<>();
-        result.put("payment_session_id", cfResponse.getPayment_session_id());
         result.put("order_id", orderId);
+        if (p != null && p.getPaymentSessionId() != null) {
+            result.put("payment_session_id", p.getPaymentSessionId());
+        } else {
+            com.lms.www.leadmanagement.dto.payment.CashfreeOrderResponse cfResponse = cashfreeService.getOrder(orderId);
+            result.put("payment_session_id", cfResponse.getPayment_session_id());
+        }
         return result;
     }
 
@@ -310,6 +316,7 @@ public class LeadPaymentService {
 
         // Update existing payment with the new Gateway ID
         payment.setPaymentGatewayId(orderId);
+        payment.setPaymentSessionId(cfResponse.getPayment_session_id());
         paymentRepository.save(payment);
 
         Map<String, String> result = new HashMap<>();
@@ -517,14 +524,7 @@ public class LeadPaymentService {
             securityService.validateAccess(requester, lead.getAssignedTo().getId());
         }
 
-        Payment payment = Payment.builder()
-                .leadId(leadId)
-                .amount(initialAmount)
-                .totalAmount(totalAmount != null ? totalAmount : initialAmount)
-                .status(Payment.Status.PENDING)
-                .paymentType(splitRequest != null ? "EMI_INSTALLMENT" : "FULL")
-                .build();
-
+        // Minimum validation
         BigDecimal minAmount = new BigDecimal("500");
         if (lead.getCourse() != null && lead.getCourse().getMinTokenAmount() != null) {
             minAmount = lead.getCourse().getMinTokenAmount();
@@ -534,7 +534,16 @@ public class LeadPaymentService {
             throw new InvalidRequestException("Minimum payment amount is ₹" + minAmount);
         }
 
-        Payment saved = paymentRepository.save(payment);
+        // Save payment first
+        Payment saved = paymentRepository.save(
+                Payment.builder()
+                        .leadId(leadId)
+                        .amount(initialAmount)
+                        .totalAmount(totalAmount != null ? totalAmount : initialAmount)
+                        .status(Payment.Status.PENDING)
+                        .paymentType(splitRequest != null ? "EMI_INSTALLMENT" : "FULL")
+                        .build()
+        );
 
         if (splitRequest != null) {
             splitPayment(saved.getId(), splitRequest);
@@ -542,46 +551,73 @@ public class LeadPaymentService {
 
         syncStudentFee(lead, BigDecimal.ZERO, totalAmount, null, null);
 
-        // Generate a unique Order ID for this transaction
         String gatewayOrderId = "REMI_" + saved.getId() + "_" + System.currentTimeMillis();
 
-        // Prepare Cashfree Order Request
-        com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest cfRequest = com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest
-                .builder()
-                .order_id(gatewayOrderId)
-                .order_amount(initialAmount)
-                .order_currency("INR")
-                .customer_details(com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.CustomerDetails.builder()
-                        .customer_id("CUST_" + leadId)
-                        .customer_name(lead.getName())
-                        .customer_email(lead.getEmail())
-                        .customer_phone(lead.getMobile() != null ? lead.getMobile().replaceAll("[^0-9]", "") : "")
-                        .build())
-                .order_meta(com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.OrderMeta.builder()
-                        .return_url(frontendUrl + "/payment-status/" + gatewayOrderId)
-                        .notify_url(webhookUrl != null && webhookUrl.startsWith("https://") ? webhookUrl : null)
-                        .build())
-                .build();
+        String cleanPhone = lead.getMobile() != null
+                ? lead.getMobile().replaceAll("[^0-9]", "")
+                : "9999999999";
 
-        // Synchronize with Gateway
-        com.lms.www.leadmanagement.dto.payment.CashfreeOrderResponse cfResponse = cashfreeService
-                .createOrder(cfRequest);
-
-        // Persist Gateway ID
-        saved.setPaymentGatewayId(gatewayOrderId);
-        paymentRepository.save(saved);
-
-        Map<String, String> response = new HashMap<>();
-        response.put("payment_url", frontendUrl + "/payment-instruction/" + gatewayOrderId);
-
-        String sessionId = cfResponse.getPayment_session_id();
-        if (sessionId == null || sessionId.isEmpty()) {
-            throw new RuntimeException("Invalid Cashfree session id received from gateway");
+        if (cleanPhone.length() > 10) {
+            cleanPhone = cleanPhone.substring(cleanPhone.length() - 10);
+        }
+        if (cleanPhone.length() < 10) {
+            cleanPhone = "9999999999";
         }
 
+        String email = (lead.getEmail() != null && !lead.getEmail().isBlank())
+                ? lead.getEmail()
+                : "test@example.com";
+
+        // ✅ BUILD REQUEST (IMPORTANT: all required fields valid)
+        com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest cfRequest =
+                com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.builder()
+                        .order_id(gatewayOrderId)
+                        .order_amount(initialAmount)
+                        .order_currency("INR")
+                        .customer_details(
+                                com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.CustomerDetails.builder()
+                                        .customer_id("CUST_" + leadId)
+                                        .customer_name(lead.getName() != null && !lead.getName().isBlank() ? lead.getName() : "Customer")
+                                        .customer_email(email)
+                                        .customer_phone(cleanPhone)
+                                        .build()
+                        )
+                        .order_meta(
+                                com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.OrderMeta.builder()
+                                        .return_url(frontendUrl + "/payment-status/" + gatewayOrderId)
+                                        .notify_url(webhookUrl != null && webhookUrl.startsWith("https://") ? webhookUrl : null)
+                                        .build()
+                        )
+                        .build();
+
+        // ✅ CALL CASHFREE
+        com.lms.www.leadmanagement.dto.payment.CashfreeOrderResponse cfResponse = cashfreeService.createOrder(cfRequest);
+
+        // ❗ IMPORTANT CHECK (THIS FIXES YOUR ERROR)
+        if (cfResponse == null || cfResponse.getPayment_session_id() == null) {
+            throw new RuntimeException(
+                    "Cashfree order failed. Check credentials / amount / phone / email. Response: " + cfResponse
+            );
+        }
+
+        String sessionId = cfResponse.getPayment_session_id();
+
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new RuntimeException("Invalid Cashfree session received. Check API credentials / request.");
+        }
+
+        // Save gateway ID
+        saved.setPaymentGatewayId(gatewayOrderId);
+        saved.setPaymentSessionId(sessionId);
+        paymentRepository.save(saved);
+
+        // Response
+        Map<String, String> response = new HashMap<>();
+        response.put("order_id", gatewayOrderId);
         response.put("payment_session_id", sessionId);
         response.put("paymentSessionId", sessionId);
-        response.put("order_id", gatewayOrderId);
+        response.put("payment_url", frontendUrl + "/payment-instruction/" + gatewayOrderId);
+
         return response;
     }
 

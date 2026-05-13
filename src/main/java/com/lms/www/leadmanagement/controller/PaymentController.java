@@ -117,6 +117,12 @@ public class PaymentController {
         }
     }
 
+    @GetMapping({"/session/{orderId}", "/fetch-order/{orderId}"})
+    public ResponseEntity<?> fetchOrder(@PathVariable String orderId) {
+        log.info("Gateway session fetch for Order: {}", orderId);
+        return ResponseEntity.ok(leadPaymentService.fetchCashfreeOrder(orderId));
+    }
+
     @PostMapping("/api/payments/order/{orderId}/verify")
     @PreAuthorize("hasAuthority('UPDATE_LEAD_STATUS') or hasAuthority('ADMIN') or hasAuthority('MANAGER')")
     public ResponseEntity<Map<String, Object>> verifyPayment(@PathVariable String orderId) {
@@ -233,6 +239,17 @@ public class PaymentController {
             response.put("warning", "Gateway session lookup failed: " + e.getMessage());
         }
         
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/api/payments/session/{orderId}")
+    public ResponseEntity<?> getPaymentSession(@PathVariable String orderId) {
+        com.lms.www.leadmanagement.entity.Payment payment = paymentRepository.findByPaymentGatewayId(orderId)
+                .orElseThrow(() -> new com.lms.www.leadmanagement.exception.ResourceNotFoundException("Order not found"));
+
+        Map<String, String> response = new HashMap<>();
+        response.put("order_id", payment.getPaymentGatewayId());
+        response.put("payment_session_id", payment.getPaymentSessionId());
         return ResponseEntity.ok(response);
     }
 }

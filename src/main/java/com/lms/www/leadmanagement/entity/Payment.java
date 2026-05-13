@@ -37,6 +37,8 @@ public class Payment {
     private Status status;
 
     private String paymentGatewayId;
+    @Column(length = 255)
+    private String paymentSessionId;
     private String note;
     private String receiptUrl; // For manual payment screenshots
 
