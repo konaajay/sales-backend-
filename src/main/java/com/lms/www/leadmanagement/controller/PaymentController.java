@@ -244,12 +244,12 @@ public class PaymentController {
 
     @GetMapping("/api/payments/session/{orderId}")
     public ResponseEntity<?> getPaymentSession(@PathVariable String orderId) {
-        com.lms.www.leadmanagement.entity.Payment payment = paymentRepository.findByPaymentGatewayId(orderId)
-                .orElseThrow(() -> new com.lms.www.leadmanagement.exception.ResourceNotFoundException("Order not found"));
-
+        // Always fetch from gateway to ensure fresh session ID
+        Map<String, String> cfData = leadPaymentService.fetchCashfreeOrder(orderId);
+        
         Map<String, String> response = new HashMap<>();
-        response.put("order_id", payment.getPaymentGatewayId());
-        response.put("payment_session_id", payment.getPaymentSessionId());
+        response.put("order_id", orderId);
+        response.put("payment_session_id", cfData.get("payment_session_id"));
         return ResponseEntity.ok(response);
     }
 }

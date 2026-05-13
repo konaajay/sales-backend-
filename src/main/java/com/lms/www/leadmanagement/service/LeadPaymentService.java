@@ -111,7 +111,6 @@ public class LeadPaymentService {
                 .amount(amount)
                 .status(Payment.Status.PENDING)
                 .paymentGatewayId(orderId)
-                .paymentSessionId(cfResponse.getPayment_session_id())
                 .paymentType(type != null ? type : "CASHFREE")
                 .build();
         paymentRepository.save(payment);
@@ -216,15 +215,11 @@ public class LeadPaymentService {
     }
 
     public Map<String, String> fetchCashfreeOrder(String orderId) {
-        Payment p = paymentRepository.findByPaymentGatewayId(orderId).orElse(null);
+        // Fetch fresh from gateway to ensure session validity
+        com.lms.www.leadmanagement.dto.payment.CashfreeOrderResponse cfResponse = cashfreeService.getOrder(orderId);
         Map<String, String> result = new HashMap<>();
         result.put("order_id", orderId);
-        if (p != null && p.getPaymentSessionId() != null) {
-            result.put("payment_session_id", p.getPaymentSessionId());
-        } else {
-            com.lms.www.leadmanagement.dto.payment.CashfreeOrderResponse cfResponse = cashfreeService.getOrder(orderId);
-            result.put("payment_session_id", cfResponse.getPayment_session_id());
-        }
+        result.put("payment_session_id", cfResponse.getPayment_session_id());
         return result;
     }
 
@@ -608,7 +603,6 @@ public class LeadPaymentService {
 
         // Save gateway ID
         saved.setPaymentGatewayId(gatewayOrderId);
-        saved.setPaymentSessionId(sessionId);
         paymentRepository.save(saved);
 
         // Response
