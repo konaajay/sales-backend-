@@ -93,8 +93,12 @@ public class UserService {
         assignHierarchy(user, dto);
         User saved = userRepository.save(user);
 
-        // Async email sending (Conceptual - should be event based or async)
-        mailService.sendUserCredentials(saved.getEmail(), dto.getPassword(), saved.getName());
+        // Async email sending - Wrapped in try-catch to prevent failure if mail server is down
+        try {
+            mailService.sendUserCredentials(saved.getEmail(), dto.getPassword(), saved.getName());
+        } catch (Exception e) {
+            System.err.println("[MAIL] Failed to send credentials to " + saved.getEmail() + ": " + e.getMessage());
+        }
 
         return UserDTO.fromEntity(saved);
     }

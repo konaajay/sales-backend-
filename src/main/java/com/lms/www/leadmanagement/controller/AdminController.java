@@ -94,7 +94,7 @@ public class AdminController {
 
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'TEAM_LEADER')")
     @GetMapping("/users")
-    public ResponseEntity<Page<UserDTO>> getAllUsers(@PageableDefault(size = 20) Pageable pageable) {
+    public ResponseEntity<Page<UserDTO>> getAllUsers(@PageableDefault(size = 2000) Pageable pageable) {
         System.out.println("API CALL: GET /api/admin/users?page=" + pageable.getPageNumber());
         return ResponseEntity.ok(adminService.getAllUsers(pageable));
     }
@@ -107,7 +107,7 @@ public class AdminController {
             @RequestParam(required = false) Long userId,
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to,
-            @PageableDefault(size = 20, sort = "createdAt", direction = org.springframework.data.domain.Sort.Direction.DESC) Pageable pageable) {
+            @PageableDefault(size = 2000, sort = "createdAt", direction = org.springframework.data.domain.Sort.Direction.DESC) Pageable pageable) {
         System.out.println("API CALL: GET /api/admin/leads?page=" + pageable.getPageNumber());
         return ResponseEntity.ok(adminService.getAllLeads(pageable, managerId, teamId, userId, from, to));
     }

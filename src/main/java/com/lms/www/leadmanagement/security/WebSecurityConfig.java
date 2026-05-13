@@ -110,9 +110,11 @@ public class WebSecurityConfig {
     public org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource() {
         var config = new org.springframework.web.cors.CorsConfiguration();
 
-        config.setAllowedOrigins(List.of(
+        config.setAllowedOriginPatterns(List.of(
                 frontendUrl,
-                "http://localhost:3000"
+                "http://localhost:3000",
+                "http://192.168.*:*",
+                "http://100.*:*"
         ));
 
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
