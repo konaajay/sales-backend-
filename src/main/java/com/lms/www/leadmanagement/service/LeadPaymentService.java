@@ -84,9 +84,6 @@ public class LeadPaymentService {
         if (cleanPhone.length() > 10) {
             cleanPhone = cleanPhone.substring(cleanPhone.length() - 10);
         }
-        if (cleanPhone.length() != 10) {
-            cleanPhone = "9999999999";
-        }
 
         com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest request = com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest
                 .builder()
@@ -548,15 +545,6 @@ public class LeadPaymentService {
         // Generate a unique Order ID for this transaction
         String gatewayOrderId = "REMI_" + saved.getId() + "_" + System.currentTimeMillis();
 
-        // Sanitize phone number for Cashfree (must be 10 digits)
-        String cleanPhone = lead.getMobile() != null ? lead.getMobile().replaceAll("[^0-9]", "") : "";
-        if (cleanPhone.length() > 10) {
-            cleanPhone = cleanPhone.substring(cleanPhone.length() - 10);
-        }
-        if (cleanPhone.length() != 10) {
-            cleanPhone = "9999999999";
-        }
-
         // Prepare Cashfree Order Request
         com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest cfRequest = com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest
                 .builder()
@@ -567,7 +555,7 @@ public class LeadPaymentService {
                         .customer_id("CUST_" + leadId)
                         .customer_name(lead.getName())
                         .customer_email(lead.getEmail())
-                        .customer_phone(cleanPhone)
+                        .customer_phone(lead.getMobile() != null ? lead.getMobile().replaceAll("[^0-9]", "") : "")
                         .build())
                 .order_meta(com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.OrderMeta.builder()
                         .return_url(frontendUrl + "/payment-status/" + gatewayOrderId)
@@ -588,12 +576,11 @@ public class LeadPaymentService {
 
         String sessionId = cfResponse.getPayment_session_id();
         if (sessionId == null || sessionId.isEmpty()) {
-            log.error("CRITICAL: Gateway failed to provide Session ID for order {}", gatewayOrderId);
             throw new RuntimeException("Invalid Cashfree session id received from gateway");
         }
 
         response.put("payment_session_id", sessionId);
-        response.put("payment_session_id", cfResponse.getPayment_session_id());
+        response.put("paymentSessionId", sessionId);
         response.put("order_id", gatewayOrderId);
         return response;
     }
