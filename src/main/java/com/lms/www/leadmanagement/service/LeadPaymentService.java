@@ -35,7 +35,7 @@ public class LeadPaymentService {
     @Value("${cashfree.webhook.url}")
     private String webhookUrl;
 
-    @Value("${app.frontend-url:http://100.30.239.118}")
+    @Value("${app.frontend-url:http://52.87.168.111}")
     private String frontendUrl;
 
     @Transactional
@@ -88,7 +88,8 @@ public class LeadPaymentService {
             cleanPhone = "9999999999"; // Fallback for invalid numbers to prevent gateway rejection
         }
 
-        String cleanEmail = (lead.getEmail() != null && !lead.getEmail().isBlank()) ? lead.getEmail() : "test@example.com";
+        String cleanEmail = (lead.getEmail() != null && !lead.getEmail().isBlank()) ? lead.getEmail()
+                : "test@example.com";
 
         com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest request = com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest
                 .builder()
@@ -98,7 +99,8 @@ public class LeadPaymentService {
                 .order_expiry_time(expiryTime)
                 .customer_details(com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.CustomerDetails.builder()
                         .customer_id("CUST_" + leadId)
-                        .customer_name(lead.getName() != null && !lead.getName().isBlank() ? lead.getName() : "Customer")
+                        .customer_name(
+                                lead.getName() != null && !lead.getName().isBlank() ? lead.getName() : "Customer")
                         .customer_email(cleanEmail)
                         .customer_phone(cleanPhone)
                         .build())
@@ -112,7 +114,9 @@ public class LeadPaymentService {
 
         if (cfResponse == null || cfResponse.getPayment_session_id() == null) {
             log.error("CRITICAL: Cashfree order creation failed. Response: {}", cfResponse);
-            throw new RuntimeException("Gateway Order Initiation Failed. Verify customer details and API credentials. Response: " + cfResponse);
+            throw new RuntimeException(
+                    "Gateway Order Initiation Failed. Verify customer details and API credentials. Response: "
+                            + cfResponse);
         }
 
         // Record pending payment (Token/Initial)
@@ -546,8 +550,7 @@ public class LeadPaymentService {
                         .totalAmount(totalAmount != null ? totalAmount : initialAmount)
                         .status(Payment.Status.PENDING)
                         .paymentType(splitRequest != null ? "EMI_INSTALLMENT" : "FULL")
-                        .build()
-        );
+                        .build());
 
         if (splitRequest != null) {
             splitPayment(saved.getId(), splitRequest);
@@ -573,35 +576,34 @@ public class LeadPaymentService {
                 : "test@example.com";
 
         // ✅ BUILD REQUEST (IMPORTANT: all required fields valid)
-        com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest cfRequest =
-                com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.builder()
-                        .order_id(gatewayOrderId)
-                        .order_amount(initialAmount)
-                        .order_currency("INR")
-                        .customer_details(
-                                com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.CustomerDetails.builder()
-                                        .customer_id("CUST_" + leadId)
-                                        .customer_name(lead.getName() != null && !lead.getName().isBlank() ? lead.getName() : "Customer")
-                                        .customer_email(email)
-                                        .customer_phone(cleanPhone)
-                                        .build()
-                        )
-                        .order_meta(
-                                com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.OrderMeta.builder()
-                                        .return_url(frontendUrl + "/payment-status/" + gatewayOrderId)
-                                        .notify_url(webhookUrl != null && webhookUrl.startsWith("https://") ? webhookUrl : null)
-                                        .build()
-                        )
-                        .build();
+        com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest cfRequest = com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest
+                .builder()
+                .order_id(gatewayOrderId)
+                .order_amount(initialAmount)
+                .order_currency("INR")
+                .customer_details(
+                        com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.CustomerDetails.builder()
+                                .customer_id("CUST_" + leadId)
+                                .customer_name(lead.getName() != null && !lead.getName().isBlank() ? lead.getName()
+                                        : "Customer")
+                                .customer_email(email)
+                                .customer_phone(cleanPhone)
+                                .build())
+                .order_meta(
+                        com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.OrderMeta.builder()
+                                .return_url(frontendUrl + "/payment-status/" + gatewayOrderId)
+                                .notify_url(webhookUrl != null && webhookUrl.startsWith("https://") ? webhookUrl : null)
+                                .build())
+                .build();
 
         // ✅ CALL CASHFREE
-        com.lms.www.leadmanagement.dto.payment.CashfreeOrderResponse cfResponse = cashfreeService.createOrder(cfRequest);
+        com.lms.www.leadmanagement.dto.payment.CashfreeOrderResponse cfResponse = cashfreeService
+                .createOrder(cfRequest);
 
         // ❗ IMPORTANT CHECK (THIS FIXES YOUR ERROR)
         if (cfResponse == null || cfResponse.getPayment_session_id() == null) {
             throw new RuntimeException(
-                    "Cashfree order failed. Check credentials / amount / phone / email. Response: " + cfResponse
-            );
+                    "Cashfree order failed. Check credentials / amount / phone / email. Response: " + cfResponse);
         }
 
         String sessionId = cfResponse.getPayment_session_id();
