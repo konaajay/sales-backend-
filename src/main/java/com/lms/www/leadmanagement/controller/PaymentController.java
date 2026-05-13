@@ -276,7 +276,7 @@ public class PaymentController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/api/payments/session/{orderId}")
+    @GetMapping("/api/public/payments/session/{orderId}")
     public ResponseEntity<?> getPaymentSession(@PathVariable String orderId) {
         // Always fetch from gateway to ensure fresh session ID
         Map<String, String> cfData = leadPaymentService.fetchCashfreeOrder(orderId);
