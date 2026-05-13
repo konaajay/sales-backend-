@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -28,6 +29,9 @@ public class PaymentController {
 
     @Autowired
     private com.lms.www.leadmanagement.repository.LeadRepository leadRepository;
+
+    @Value("${cashfree.environment:TEST}")
+    private String cashfreeEnvironment;
 
     @GetMapping("/api/payments/lead/{leadId}/invoice")
     public ResponseEntity<PaymentDTO> getInvoiceByLeadId(@PathVariable Long leadId) {
@@ -192,6 +196,7 @@ public class PaymentController {
         response.put("studentName", lead.getName());
         response.put("studentEmail", lead.getEmail());
         response.put("status", p.getStatus().name());
+        response.put("cashfreeEnvironment", cashfreeEnvironment); // Added to sync mode with frontend
         
         // Proactive Verification: If the order is pending in our DB, check Cashfree status
         if (p.getStatus() == com.lms.www.leadmanagement.entity.Payment.Status.PENDING) {
@@ -214,12 +219,17 @@ public class PaymentController {
         // Fetch session ID from Cashfree to allow checkout
         try {
             Map<String, String> cfOrder = leadPaymentService.fetchCashfreeOrder(orderId);
-            if (cfOrder != null && cfOrder.containsKey("payment_session_id")) {
-                response.put("paymentSessionId", cfOrder.get("payment_session_id"));
+            String sessionId = (cfOrder != null) ? cfOrder.get("payment_session_id") : null;
+            
+            if (sessionId != null && !sessionId.isBlank()) {
+                response.put("paymentSessionId", sessionId);
+                log.info("Successfully attached Payment Session ID for Order: {}", orderId);
             } else {
-                response.put("error", "No active payment session found in gateway");
+                log.warn("Cashfree Order found but NO payment_session_id returned for Order: {}", orderId);
+                response.put("error", "No active payment session found in gateway. Session may have expired.");
             }
         } catch (Exception e) {
+            log.error("Gateway session lookup failed for Order {}: {}", orderId, e.getMessage());
             response.put("warning", "Gateway session lookup failed: " + e.getMessage());
         }
         

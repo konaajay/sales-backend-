@@ -43,7 +43,11 @@ public class CashfreeService {
         try {
             ResponseEntity<CashfreeOrderResponse> response = restTemplate.postForEntity(
                 getBaseUrl(), entity, CashfreeOrderResponse.class);
-            return response.getBody();
+            CashfreeOrderResponse body = response.getBody();
+            if (body != null) {
+                log.info("Cashfree Order Created: ID={}, SessionID={}", body.getOrder_id(), body.getPayment_session_id());
+            }
+            return body;
         } catch (org.springframework.web.client.HttpStatusCodeException e) {
             String errorBody = e.getResponseBodyAsString();
             log.error("Cashfree API Rejection [{}]: {}", e.getStatusCode(), errorBody);
@@ -82,7 +86,11 @@ public class CashfreeService {
                 HttpMethod.GET,
                 entity,
                 CashfreeOrderResponse.class);
-            return response.getBody();
+            CashfreeOrderResponse body = response.getBody();
+            if (body != null) {
+                log.info("Cashfree Order Fetched: ID={}, Status={}, SessionID={}", body.getOrder_id(), body.getOrder_status(), body.getPayment_session_id());
+            }
+            return body;
         } catch (Exception e) {
             log.error("Error fetching Cashfree order {}: {}", orderId, e.getMessage());
             throw new RuntimeException("Failed to fetch payment details from Cashfree");

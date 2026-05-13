@@ -541,10 +541,43 @@ public class LeadPaymentService {
 
         syncStudentFee(lead, BigDecimal.ZERO, totalAmount, null, null);
 
+        // Generate a unique Order ID for this transaction
+        String gatewayOrderId = "REMI_" + saved.getId() + "_" + System.currentTimeMillis();
+        
+        // Prepare Cashfree Order Request
+        com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest cfRequest = com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.builder()
+                .order_id(gatewayOrderId)
+                .order_amount(initialAmount)
+                .order_currency("INR")
+                .customer_details(com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.CustomerDetails.builder()
+                        .customer_id("CUST_" + leadId)
+                        .customer_name(lead.getName())
+                        .customer_email(lead.getEmail())
+                        .customer_phone(lead.getMobile() != null ? lead.getMobile().replaceAll("[^0-9]", "") : "")
+                        .build())
+                .order_meta(com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.OrderMeta.builder()
+                        .return_url(frontendUrl + "/payment-status/" + gatewayOrderId)
+                        .notify_url(webhookUrl != null && webhookUrl.startsWith("https://") ? webhookUrl : null)
+                        .build())
+                .build();
+ 
+        // Synchronize with Gateway
+        com.lms.www.leadmanagement.dto.payment.CashfreeOrderResponse cfResponse = cashfreeService.createOrder(cfRequest);
+        
+        // Persist Gateway ID
+        saved.setPaymentGatewayId(gatewayOrderId);
+        paymentRepository.save(saved);
+ 
         Map<String, String> response = new HashMap<>();
-        response.put("payment_url", frontendUrl + "/payment-instruction/" + saved.getId());
-        response.put("payment_session_id", "MANUAL_" + saved.getId());
-
+        response.put("payment_url", frontendUrl + "/payment-instruction/" + gatewayOrderId);
+        
+        String sessionId = cfResponse.getPayment_session_id();
+        if (sessionId == null || sessionId.isEmpty()) {
+            throw new RuntimeException("Invalid Cashfree session id received from gateway");
+        }
+ 
+        response.put("payment_session_id", sessionId);
+        response.put("order_id", gatewayOrderId);
         return response;
     }
 
@@ -598,11 +631,6 @@ public class LeadPaymentService {
         } else {
             handleFullPayment(payment, lead);
         }
-
-        // AUTO-STATUS LOGIC: The initial token payment successfully secures the
-        // enrollment.
-        // Convert the lead immediately. The StudentFee ledger will handle remaining EMI
-        // tracking.
         lead.setStatus("CONVERTED");
         leadRepository.save(lead);
     }
