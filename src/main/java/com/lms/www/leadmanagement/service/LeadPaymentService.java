@@ -84,6 +84,11 @@ public class LeadPaymentService {
         if (cleanPhone.length() > 10) {
             cleanPhone = cleanPhone.substring(cleanPhone.length() - 10);
         }
+        if (cleanPhone.length() < 10) {
+            cleanPhone = "9999999999"; // Fallback for invalid numbers to prevent gateway rejection
+        }
+
+        String cleanEmail = (lead.getEmail() != null && !lead.getEmail().isBlank()) ? lead.getEmail() : "test@example.com";
 
         com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest request = com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest
                 .builder()
@@ -93,8 +98,8 @@ public class LeadPaymentService {
                 .order_expiry_time(expiryTime)
                 .customer_details(com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.CustomerDetails.builder()
                         .customer_id("CUST_" + leadId)
-                        .customer_name(lead.getName())
-                        .customer_email(lead.getEmail())
+                        .customer_name(lead.getName() != null && !lead.getName().isBlank() ? lead.getName() : "Customer")
+                        .customer_email(cleanEmail)
                         .customer_phone(cleanPhone)
                         .build())
                 .order_meta(com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.OrderMeta.builder()
@@ -104,6 +109,11 @@ public class LeadPaymentService {
                 .build();
 
         com.lms.www.leadmanagement.dto.payment.CashfreeOrderResponse cfResponse = cashfreeService.createOrder(request);
+
+        if (cfResponse == null || cfResponse.getPayment_session_id() == null) {
+            log.error("CRITICAL: Cashfree order creation failed. Response: {}", cfResponse);
+            throw new RuntimeException("Gateway Order Initiation Failed. Verify customer details and API credentials. Response: " + cfResponse);
+        }
 
         // Record pending payment (Token/Initial)
         Payment payment = Payment.builder()

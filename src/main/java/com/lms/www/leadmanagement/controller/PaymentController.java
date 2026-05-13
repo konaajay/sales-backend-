@@ -242,6 +242,40 @@ public class PaymentController {
         return ResponseEntity.ok(response);
     }
 
+    @GetMapping("/api/public/payments/invoice")
+    public ResponseEntity<Map<String, Object>> getPublicInvoice(@RequestParam("order_id") String orderId) {
+        com.lms.www.leadmanagement.entity.Payment p = paymentRepository
+                .findByPaymentGatewayId(orderId)
+                .orElseThrow(() -> new com.lms.www.leadmanagement.exception.ResourceNotFoundException("Invoice not found"));
+        
+        // Only allow access if paid
+        String status = p.getStatus().name();
+        if (!"PAID".equals(status) && !"SUCCESS".equals(status) && !"COMPLETED".equals(status)) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("message", "Payment verification pending. Invoice access restricted.");
+            return ResponseEntity.status(403).body(error);
+        }
+
+        com.lms.www.leadmanagement.entity.Lead lead = leadRepository.findById(p.getLeadId()).orElseThrow();
+        
+        Map<String, Object> response = new HashMap<>();
+        response.put("id", p.getId());
+        response.put("paymentGatewayId", p.getPaymentGatewayId());
+        response.put("amount", p.getAmount());
+        response.put("date", p.getDate() != null ? p.getDate() : p.getCreatedAt());
+        response.put("paymentMethod", p.getPaymentMethod());
+        response.put("paymentType", p.getPaymentType());
+        response.put("status", status);
+        response.put("leadName", lead.getName());
+        response.put("leadEmail", lead.getEmail());
+        
+        if (lead.getAssignedTo() != null) {
+            response.put("assignedTlName", lead.getAssignedTo().getName());
+        }
+        
+        return ResponseEntity.ok(response);
+    }
+
     @GetMapping("/api/payments/session/{orderId}")
     public ResponseEntity<?> getPaymentSession(@PathVariable String orderId) {
         // Always fetch from gateway to ensure fresh session ID
