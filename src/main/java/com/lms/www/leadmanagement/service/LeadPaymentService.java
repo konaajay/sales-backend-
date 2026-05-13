@@ -311,7 +311,6 @@ public class LeadPaymentService {
 
         // Update existing payment with the new Gateway ID
         payment.setPaymentGatewayId(orderId);
-        payment.setPaymentSessionId(cfResponse.getPayment_session_id());
         paymentRepository.save(payment);
 
         Map<String, String> result = new HashMap<>();
