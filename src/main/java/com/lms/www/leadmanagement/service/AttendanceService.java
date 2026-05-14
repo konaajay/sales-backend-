@@ -74,7 +74,12 @@ public class AttendanceService {
         int grace = (user.getShift() != null) ? user.getShift().getGraceMinutes() : (policy.getGracePeriodMinutes() != null ? policy.getGracePeriodMinutes() : 0);
         
         boolean isLate = now.toLocalTime().isAfter(shiftStart.plusMinutes(grace));
-        int lateMins = isLate ? (int) Duration.between(shiftStart, now.toLocalTime()).toMinutes() : 0;
+        int lateMins = 0;
+        if (isLate) {
+            long totalLateMins = Duration.between(shiftStart, now.toLocalTime()).toMinutes();
+            long breakOverlapMins = calculateBreakOverlap(shiftStart, now.toLocalTime(), policy, user.getShift());
+            lateMins = (int) Math.max(0, totalLateMins - breakOverlapMins);
+        }
 
         AttendanceSession session = AttendanceSession.builder()
                 .user(user).office(office).checkInTime(now).status(AttendanceStatus.WORKING)
@@ -302,6 +307,35 @@ public class AttendanceService {
         return AttendanceDTO.builder()
                 .userId(user.getId()).userName(user.getName())
                 .date(date).status("ABSENT").build();
+    }
+
+    private long calculateBreakOverlap(LocalTime start, LocalTime end, AttendancePolicy policy, AttendanceShift shift) {
+        long overlapMins = 0;
+        
+        // 1. Determine Long Break (Lunch) Window
+        LocalTime lStart = (shift != null && shift.getLongBreakStartTime() != null) ? shift.getLongBreakStartTime() : (policy != null ? policy.getLongBreakStartTime() : LocalTime.of(13, 0));
+        LocalTime lEnd = (shift != null && shift.getLongBreakEndTime() != null) ? shift.getLongBreakEndTime() : (policy != null ? policy.getLongBreakEndTime() : LocalTime.of(14, 0));
+        
+        if (lStart != null && lEnd != null) {
+            overlapMins += getIntervalOverlap(start, end, lStart, lEnd);
+        }
+        
+        // 2. Determine Short Break Window
+        LocalTime sStart = (shift != null && shift.getShortBreakStartTime() != null) ? shift.getShortBreakStartTime() : (policy != null ? policy.getShortBreakStartTime() : null);
+        LocalTime sEnd = (shift != null && shift.getShortBreakEndTime() != null) ? shift.getShortBreakEndTime() : (policy != null ? policy.getShortBreakEndTime() : null);
+        
+        if (sStart != null && sEnd != null) {
+            overlapMins += getIntervalOverlap(start, end, sStart, sEnd);
+        }
+        
+        return overlapMins;
+    }
+
+    private long getIntervalOverlap(LocalTime start1, LocalTime end1, LocalTime start2, LocalTime end2) {
+        if (start1.isAfter(end2) || end1.isBefore(start2)) return 0;
+        LocalTime maxStart = start1.isAfter(start2) ? start1 : start2;
+        LocalTime minEnd = end1.isBefore(end2) ? end1 : end2;
+        return Duration.between(maxStart, minEnd).toMinutes();
     }
 
     public List<AttendanceShift> getAllShifts() {
