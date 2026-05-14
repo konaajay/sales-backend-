@@ -93,4 +93,44 @@ public class PipelineStageController {
         pipelineStageRepository.deleteById(id);
         return ResponseEntity.ok(com.lms.www.leadmanagement.dto.ApiResponse.success(null));
     }
+
+    @PatchMapping("/{id}/reorder")
+    @PreAuthorize("hasAnyRole('ADMIN')")
+    public ResponseEntity<com.lms.www.leadmanagement.dto.ApiResponse<List<PipelineStage>>> reorderStage(
+            @PathVariable Long id, 
+            @RequestParam String direction) {
+        
+        List<PipelineStage> stages = pipelineStageRepository.findAllByOrderByOrderIndexAsc();
+        int index = -1;
+        for (int i = 0; i < stages.size(); i++) {
+            if (stages.get(i).getId().equals(id)) {
+                index = i;
+                break;
+            }
+        }
+
+        if (index == -1) {
+            return ResponseEntity.badRequest().body(com.lms.www.leadmanagement.dto.ApiResponse.error("Stage not found"));
+        }
+
+        if ("UP".equalsIgnoreCase(direction) && index > 0) {
+            PipelineStage current = stages.get(index);
+            PipelineStage prev = stages.get(index - 1);
+            int temp = current.getOrderIndex();
+            current.setOrderIndex(prev.getOrderIndex());
+            prev.setOrderIndex(temp);
+            pipelineStageRepository.save(current);
+            pipelineStageRepository.save(prev);
+        } else if ("DOWN".equalsIgnoreCase(direction) && index < stages.size() - 1) {
+            PipelineStage current = stages.get(index);
+            PipelineStage next = stages.get(index + 1);
+            int temp = current.getOrderIndex();
+            current.setOrderIndex(next.getOrderIndex());
+            next.setOrderIndex(temp);
+            pipelineStageRepository.save(current);
+            pipelineStageRepository.save(next);
+        }
+
+        return ResponseEntity.ok(com.lms.www.leadmanagement.dto.ApiResponse.success(pipelineStageRepository.findAllByOrderByOrderIndexAsc()));
+    }
 }

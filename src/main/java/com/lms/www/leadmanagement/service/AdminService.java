@@ -284,6 +284,7 @@ public class AdminService {
         Map<String, Object> map = new HashMap<>();
         map.put("presentCount", stats.getPresentCount());
         map.put("absentCount", stats.getAbsentCount());
+        map.put("lateCount", stats.getLateCount());
         map.put("halfDayCount", stats.getHalfDayCount());
         map.put("dailyRevenue", stats.getDailyRevenue());
         map.put("monthlyRevenue", stats.getMonthlyRevenue());
@@ -292,6 +293,10 @@ public class AdminService {
         map.put("convertedCount", stats.getConvertedCount());
         map.put("statusDistribution", stats.getStatusDistribution());
         map.put("dailyTrend", stats.getDailyTrend());
+        map.put("performance", stats.getPerformance());
+        map.put("totalUsers", stats.getTotalUsers());
+        map.put("monthlyTarget", stats.getMonthlyTarget());
+        map.put("pendingRevenueAmount", stats.getPendingRevenueAmount());
         return map;
     }
 

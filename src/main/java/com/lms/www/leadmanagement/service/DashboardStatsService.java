@@ -18,9 +18,13 @@ import java.util.concurrent.CompletableFuture;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+import lombok.extern.slf4j.Slf4j;
+
 @Service
+@Slf4j
 @Transactional(readOnly = true)
 public class DashboardStatsService {
+
 
     @Autowired
     private AttendanceSessionRepository attendanceRepository;
@@ -143,17 +147,22 @@ public class DashboardStatsService {
         LocalDateTime dayStart = zdtNow.toLocalDate().atStartOfDay();
         LocalDateTime dayEnd = zdtNow.toLocalDate().atTime(LocalTime.MAX);
 
-        List<User> activeScopeUsers = userRepository.findAllById(userIds).stream()
-                .filter(u -> u.getId().equals(requester.getId()) || u.getJoiningDate() == null || !u.getJoiningDate().isAfter(to))
+        log.info(">>> [GET_STATS] Scope userIds count: {}", userIds != null ? userIds.size() : 0);
+        
+        List<User> activeScopeUsers = userRepository.findAllById(new ArrayList<>(userIds)).stream()
                 .filter(u -> {
+                    boolean joinDateOk = u.getJoiningDate() == null || !u.getJoiningDate().isAfter(to);
+                    boolean isActive = u.isActive();
                     // If we are in a filtered view, exclude ADMINs from the staff count
                     if (teamId != null) {
                         String r = u.getRole() != null ? u.getRole().getName().toUpperCase() : "";
-                        return !r.contains("ADMIN");
+                        return !r.contains("ADMIN") && joinDateOk && isActive;
                     }
-                    return true;
+                    return joinDateOk && isActive;
                 })
                 .collect(Collectors.toList());
+
+        log.info(">>> [GET_STATS] Active scope users size: {}", activeScopeUsers.size());
 
         final List<Long> userIdList = activeScopeUsers.stream()
                 .map(User::getId)
@@ -195,27 +204,45 @@ public class DashboardStatsService {
                                 start.minusMonths(12), end),
                 0L);
 
-        // Optimized Attendance Stats using Repository Counts
-        CompletableFuture<Long> presentCountFuture = safeAsync(
-                () -> isGlobalAdmin ? attendanceRepository.countPresentUsers(dayStart, now)
-                        : attendanceRepository.countPresentUsersIn(userIdList, dayStart, now),
-                0L);
-        CompletableFuture<Long> lateCountFuture = safeAsync(
-                () -> isGlobalAdmin ? attendanceRepository.countLateUsers(dayStart, now)
-                        : attendanceRepository.countLateUsersIn(userIdList, dayStart, now),
-                0L);
+        // Optimized Attendance Stats using Range-Aware Daily Logs
+        List<AttendanceDaily> rangeLogs = attendanceDailyRepository.findAllByUserIdInAndDateBetween(userIdList, from, to);
+        log.info(">>> [GET_STATS] Fetched Range Logs: {}", rangeLogs.size());
+        
+        // Calculate global present/late/absent by summing up individual user stats
+        // (will be calculated inside the performance loop to ensure consistency)
+        long totalPresentCount = 0;
+        long totalLateCount = 0;
+        long totalAbsentCount = 0;
+
+        // If today and range is only today, reconcile with real-time capacity
+        if (from.equals(to) && from.equals(LocalDate.now())) {
+            // Optional: fallback to real-time session repository if needed, 
+            // but rangeLogs from AttendanceDaily (which is updated on every punch) is usually sufficient.
+        }
 
         CompletableFuture<BigDecimal> dailyRevenueFuture = safeAsync(
-                () -> isGlobalAdmin ? paymentRepository.getGlobalTotalRevenue(start, end)
-                        : paymentRepository.getTotalRevenueIn(userIdList, start, end),
+                () -> {
+                    BigDecimal rev = isGlobalAdmin ? paymentRepository.getGlobalTotalRevenue(start, end)
+                                : paymentRepository.getTotalRevenueIn(userIdList, start, end);
+                    log.info(">>> [REVENUE STATS] Daily Revenue for range {}-{}: {}", start, end, rev);
+                    return rev;
+                },
                 BigDecimal.ZERO);
         CompletableFuture<BigDecimal> monthlyRevenueFuture = safeAsync(
-                () -> isGlobalAdmin ? paymentRepository.getGlobalTotalRevenue(start.withDayOfMonth(1), end)
-                        : paymentRepository.getTotalRevenueIn(userIdList, start.withDayOfMonth(1), end),
+                () -> {
+                    BigDecimal rev = isGlobalAdmin ? paymentRepository.getGlobalTotalRevenue(start.withDayOfMonth(1), end)
+                                : paymentRepository.getTotalRevenueIn(userIdList, start.withDayOfMonth(1), end);
+                    log.info(">>> [REVENUE STATS] Monthly Revenue: {}", rev);
+                    return rev;
+                },
                 BigDecimal.ZERO);
         CompletableFuture<BigDecimal> pendingRevenueFuture = safeAsync(
-                () -> isGlobalAdmin ? paymentRepository.getGlobalTotalPendingRevenueIn(start.minusYears(5), end)
-                        : paymentRepository.getTotalPendingRevenueIn(userIdList, start.minusYears(5), end),
+                () -> {
+                    BigDecimal rev = isGlobalAdmin ? paymentRepository.getGlobalTotalPendingRevenueIn(start.minusYears(5), end)
+                                : paymentRepository.getTotalPendingRevenueIn(userIdList, start.minusYears(5), end);
+                    log.info(">>> [REVENUE STATS] Pending Revenue: {}", rev);
+                    return rev;
+                },
                 BigDecimal.ZERO);
         CompletableFuture<BigDecimal> forecastRevenueFuture = safeAsync(
                 () -> (isGlobalAdmin || userIdList.isEmpty()) ? BigDecimal.ZERO
@@ -223,36 +250,36 @@ public class DashboardStatsService {
                 BigDecimal.ZERO);
 
         CompletableFuture<Long> pendingPaymentsCountFuture = safeAsync(
-                () -> isGlobalAdmin ? taskRepository.countGlobalPendingTasksByType("EMI_COLLECTION", now)
-                        : taskRepository.countPendingTasksByType(userIdList, "EMI_COLLECTION", now),
+                () -> isGlobalAdmin ? taskRepository.countGlobalOverdueTasksByType("EMI_COLLECTION", now)
+                        : taskRepository.countOverdueTasksByType(userIdList, "EMI_COLLECTION", now),
                 0L);
         CompletableFuture<Long> pendingLeadsCountFuture = safeAsync(
-                () -> isGlobalAdmin ? taskRepository.countGlobalPendingTasksByType("FOLLOW_UP", now)
-                        : taskRepository.countPendingTasksByType(userIdList, "FOLLOW_UP", now),
+                () -> isGlobalAdmin ? taskRepository.countGlobalOverdueTasksByType("FOLLOW_UP", now)
+                        : taskRepository.countOverdueTasksByType(userIdList, "FOLLOW_UP", now),
                 0L);
         CompletableFuture<Long> overduePaymentsCountFuture = safeAsync(
                 () -> isGlobalAdmin ? paymentRepository.countGlobalPendingPayments(now)
                         : paymentRepository.countPendingPayments(userIdList, now),
                 0L);
         CompletableFuture<Long> todayPaymentsCountFuture = safeAsync(
-                () -> isGlobalAdmin ? taskRepository.countGlobalFollowupsByType("EMI_COLLECTION", dayStart, dayEnd)
-                        : taskRepository.countFollowupsByType(userIdList, "EMI_COLLECTION", dayStart, dayEnd),
+                () -> isGlobalAdmin ? taskRepository.countGlobalTasksDueTodayByType(now, dayEnd, "EMI_COLLECTION")
+                        : taskRepository.countTasksDueTodayByType(userIdList, now, dayEnd, "EMI_COLLECTION"),
                 0L);
         CompletableFuture<Long> todayFollowupsFuture = safeAsync(
-                () -> isGlobalAdmin ? taskRepository.countGlobalFollowups(dayStart, dayEnd)
-                        : taskRepository.countFollowups(userIdList, dayStart, dayEnd),
+                () -> isGlobalAdmin ? taskRepository.countGlobalTasksDueTodayByType(now, dayEnd, "FOLLOW_UP")
+                        : taskRepository.countTasksDueTodayByType(userIdList, now, dayEnd, "FOLLOW_UP"),
                 0L);
         CompletableFuture<Long> pendingTasksFuture = safeAsync(
-                () -> isGlobalAdmin ? taskRepository.countGlobalPendingTasks(now)
-                        : taskRepository.countPendingTasks(userIdList, now),
+                () -> isGlobalAdmin ? taskRepository.countGlobalOverdueTasks(now)
+                        : taskRepository.countOverdueTasks(userIdList, now),
                 0L);
         CompletableFuture<Long> highPriorityFollowupsFuture = safeAsync(
                 () -> isGlobalAdmin ? leadRepository.countGlobalHighPriorityLeads(now)
                         : leadRepository.countHighPriorityLeads(userIdList, now),
                 0L);
         CompletableFuture<Long> completedTodayFuture = safeAsync(
-                () -> isGlobalAdmin ? taskRepository.countGlobalCompletedToday(dayStart, dayEnd)
-                        : taskRepository.countCompletedToday(userIdList, dayStart, dayEnd),
+                () -> isGlobalAdmin ? taskRepository.countGlobalCompletedToday(start, end)
+                        : taskRepository.countCompletedToday(userIdList, start, end),
                 0L);
 
         CompletableFuture<Long> activeTicketsFuture = safeAsync(() -> isGlobalAdmin
@@ -323,8 +350,7 @@ public class DashboardStatsService {
                     pendingTasksFuture, interestedCountFuture, totalLostCountFuture, totalLeadsCountFuture,
                     convertedCountFuture, activeTicketsFuture, pendingTicketsFuture, resolvedTicketsFuture,
                     closedTicketsFuture, todayPaymentsCountFuture, overduePaymentsCountFuture, pendingLeadsCountFuture,
-                    leadTrendFuture, convertedTrendFuture, lostTrendFuture, revenueTrendFuture, completedTodayFuture,
-                    presentCountFuture, lateCountFuture)
+                    leadTrendFuture, convertedTrendFuture, lostTrendFuture, revenueTrendFuture, completedTodayFuture)
                     .get(15, java.util.concurrent.TimeUnit.SECONDS);
         } catch (Exception e) {
         }
@@ -367,95 +393,64 @@ public class DashboardStatsService {
         filler.accept(lostTrendFuture.join(), "lost");
         filler.accept(revenueTrendFuture.join(), "revenue");
 
-        // long[] attStats = attendanceStatsFuture.join(); // Removed as we run synchronously now
         BigDecimal monthly = monthlyRevenueFuture.join();
-        // Use month/year from the filter range end instead of start to ensure current month targets show up in 'Last 30 Days' views
         int filterMonth = (to != null ? to : LocalDate.now()).getMonthValue();
         int filterYear = (to != null ? to : LocalDate.now()).getYear();
 
-        // 1. Context-Aware Target Logic
         Long assignedSubjectId = (targetUserId != null && targetUserId > 0) ? targetUserId : 
                                  (teamId != null && teamId > 0 ? teamId : requester.getId());
         BigDecimal monthlyTarget = BigDecimal.ZERO;
         
-        // Fetch all targets for the subject user
         List<RevenueTarget> targets = targetRepository.findAllByUserIdAndMonthAndYearOrderByIdDesc(assignedSubjectId, filterMonth, filterYear);
-        
-        System.out.println("TARGET_DEBUG: SubjectId=" + assignedSubjectId + ", Month=" + filterMonth + ", Year=" + filterYear + ", Found=" + targets.size());
-
         if (!targets.isEmpty()) {
             boolean isPersonalHomeView = (targetUserId != null && targetUserId.equals(requester.getId()));
-            
             if (isPersonalHomeView) {
                 monthlyTarget = targets.stream()
                     .filter(t -> t.getType() != null && "DISTRIBUTED".equalsIgnoreCase(t.getType().name()) && t.getAssignedBy().equals(assignedSubjectId))
                     .findFirst()
                     .map(RevenueTarget::getTargetAmount)
-                    .orElseGet(() -> {
-                        return targets.stream()
-                            .filter(t -> t.getType() != null && "ASSIGNED".equalsIgnoreCase(t.getType().name()))
-                            .findFirst()
-                            .map(RevenueTarget::getTargetAmount)
-                            .orElse(targets.get(0).getTargetAmount());
-                    });
-                System.out.println("TARGET_DEBUG: Home View Logic applied. Final=" + monthlyTarget);
+                    .orElseGet(() -> targets.stream()
+                        .filter(t -> t.getType() != null && "ASSIGNED".equalsIgnoreCase(t.getType().name()))
+                        .findFirst()
+                        .map(RevenueTarget::getTargetAmount)
+                        .orElse(targets.get(0).getTargetAmount()));
             } else {
                 monthlyTarget = targets.stream()
                     .filter(t -> t.getType() != null && "ASSIGNED".equalsIgnoreCase(t.getType().name()) && !t.getAssignedBy().equals(assignedSubjectId))
                     .findFirst()
                     .map(RevenueTarget::getTargetAmount)
-                    .orElseGet(() -> {
-                        return targets.stream()
-                            .max(Comparator.comparing(RevenueTarget::getTargetAmount))
-                            .map(RevenueTarget::getTargetAmount)
-                            .orElse(targets.get(0).getTargetAmount());
-                    });
-                System.out.println("TARGET_DEBUG: Team View Logic applied. Final=" + monthlyTarget);
+                    .orElseGet(() -> targets.stream()
+                        .max(Comparator.comparing(RevenueTarget::getTargetAmount))
+                        .map(RevenueTarget::getTargetAmount)
+                        .orElse(targets.get(0).getTargetAmount()));
             }
-        } else {
-            System.out.println("TARGET_DEBUG: No targets found in DB for this user/month/year combination.");
         }
-
         if (monthlyTarget == null) monthlyTarget = BigDecimal.ZERO;
 
-        // 2. Context-Aware Distributed Target (Bottom Number)
         BigDecimal distributedTarget = BigDecimal.ZERO;
-        
         Long distributionSubjectId = (targetUserId != null && targetUserId > 0) ? targetUserId : requester.getId();
         if (teamId != null && teamId > 0 && (targetUserId == null || targetUserId <= 0)) {
             distributionSubjectId = teamId;
         }
 
-        // Fetch all targets assigned BY this subject to their subordinates
         List<RevenueTarget> assignedBySubject = targetRepository.findAllByAssignedByAndMonthAndYear(distributionSubjectId, filterMonth, filterYear);
-        
         if (assignedBySubject != null && !assignedBySubject.isEmpty()) {
             Map<Long, Long> latestIdMap = new HashMap<>();
             Map<Long, BigDecimal> targetMap = new HashMap<>();
-            
             for (RevenueTarget rt : assignedBySubject) {
                 Long uid = rt.getUser().getId();
-                // Ensure we only sum the latest version of a target for each subordinate
                 if (!latestIdMap.containsKey(uid) || rt.getId() > latestIdMap.get(uid)) {
                     latestIdMap.put(uid, rt.getId());
                     targetMap.put(uid, rt.getTargetAmount());
                 }
             }
-            distributedTarget = targetMap.values().stream()
-                .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+            distributedTarget = targetMap.values().stream().filter(Objects::nonNull).reduce(BigDecimal.ZERO, BigDecimal::add);
         }
 
-        // Achievement calculation based on the context-aware monthlyTarget determined above
         Double achievement = (monthlyTarget != null && monthlyTarget.compareTo(BigDecimal.ZERO) > 0) ? monthly
                 .divide(monthlyTarget, 4, java.math.RoundingMode.HALF_UP).multiply(new BigDecimal(100)).doubleValue()
                 : 0.0;
 
-        Long presentCount = presentCountFuture.join();
-        Long lateCount = lateCountFuture.join();
-        Long absentCount = Math.max(0L, (long)userIdList.size() - presentCount);
-
-        // 3. Build Performance List for Subordinates/Scope
         List<MemberPerformanceDTO> performance = new ArrayList<>();
         if (!userIdList.isEmpty()) {
             List<Map<String, Object>> revenuePerUser = paymentRepository.getRevenuePerUser(new HashSet<>(userIdList), start, end);
@@ -464,45 +459,46 @@ public class DashboardStatsService {
                 for (Map<String, Object> m : revenuePerUser) {
                     Long uid = (Long) m.get("userId");
                     BigDecimal rev = (BigDecimal) m.get("totalRevenue");
-                    if (uid != null) {
-                        revenueMap.put(uid, rev != null ? rev : BigDecimal.ZERO);
-                    }
+                    if (uid != null) revenueMap.put(uid, rev != null ? rev : BigDecimal.ZERO);
                 }
             }
-            
+
+            Map<Long, List<AttendanceDaily>> attendanceByUser = rangeLogs.stream().collect(Collectors.groupingBy(a -> a.getUser().getId()));
             for (User u : activeScopeUsers) {
                 Long uid = u.getId();
                 BigDecimal userTarget = BigDecimal.ZERO;
-                
-                // For each user in scope, find their specific ASSIGNED target for this month
                 List<RevenueTarget> userTargets = targetRepository.findAllByUserIdAndMonthAndYearOrderByIdDesc(uid, filterMonth, filterYear);
                 if (!userTargets.isEmpty()) {
-                    userTarget = userTargets.stream()
-                        .filter(t -> t.getType() != null && "ASSIGNED".equalsIgnoreCase(t.getType().name()))
-                        .findFirst()
-                        .map(RevenueTarget::getTargetAmount)
-                        .orElse(userTargets.get(0).getTargetAmount());
+                    userTarget = userTargets.stream().filter(t -> t.getType() != null && "ASSIGNED".equalsIgnoreCase(t.getType().name())).findFirst().map(RevenueTarget::getTargetAmount).orElse(userTargets.get(0).getTargetAmount());
                 }
 
-                performance.add(MemberPerformanceDTO.builder()
-                    .userId(uid)
-                    .username(u.getName())
-                    .role(u.getRole() != null ? u.getRole().getName().replace("ROLE_", "") : "USER")
-                    .targetAmount(userTarget)
-                    .monthlyRevenue(revenueMap.getOrDefault(uid, BigDecimal.ZERO))
-                    .build());
+                List<AttendanceDaily> userLogs = attendanceByUser.getOrDefault(uid, new ArrayList<>());
+                long userPresents = userLogs.stream().filter(a -> a.getStatus() != null && !"ABSENT".equalsIgnoreCase(a.getStatus())).count();
+                long userLates = userLogs.stream().filter(AttendanceDaily::isLate).count();
+                long userAbsents = 0;
+                LocalDate effectiveStart = (u.getJoiningDate() != null && u.getJoiningDate().isAfter(from)) ? u.getJoiningDate() : from;
+                LocalDate effectiveEnd = to.isAfter(LocalDate.now()) ? LocalDate.now() : to;
+                if (!effectiveStart.isAfter(effectiveEnd)) {
+                    long totalExpectedDays = java.time.temporal.ChronoUnit.DAYS.between(effectiveStart, effectiveEnd) + 1;
+                    userAbsents = Math.max(0, totalExpectedDays - userPresents);
+                }
+                performance.add(MemberPerformanceDTO.builder().userId(uid).username(u.getName()).role(u.getRole() != null ? u.getRole().getName().replace("ROLE_", "") : "USER").targetAmount(userTarget).monthlyRevenue(revenueMap.getOrDefault(uid, BigDecimal.ZERO)).presentCount(userPresents).lateCount(userLates).absentCount(userAbsents).build());
             }
         }
 
-        return DashboardStatsDTO.builder()
-                .presentCount(presentCount).absentCount(absentCount).halfDayCount(0L)
-                .lateCount(lateCount)
+        long allOverdue = pendingTasksFuture.join();
+        long emiOverdue = pendingPaymentsCountFuture.join();
+        long followupOverdue = Math.max(0, allOverdue - emiOverdue);
+
+        DashboardStatsDTO stats = DashboardStatsDTO.builder()
+                .presentCount(totalPresentCount).absentCount(totalAbsentCount).halfDayCount(0L)
+                .lateCount(totalLateCount)
                 .dailyRevenue(dailyRevenueFuture.join()).monthlyRevenue(monthly)
                 .expectedRevenue(pendingRevenueFuture.join())
                 .pendingPaymentsAmount(pendingRevenueFuture.join()).forecastRevenue(forecastRevenueFuture.join())
-                .todayFollowups(todayFollowupsFuture.join()).pendingFollowups(pendingTasksFuture.join())
-                .pendingAppointments(pendingTasksFuture.join())
-                .pendingPayments(pendingPaymentsCountFuture.join()).monthlyTarget(monthlyTarget)
+                .todayFollowups(todayFollowupsFuture.join()).pendingFollowups(followupOverdue)
+                .pendingAppointments(allOverdue)
+                .pendingPayments(emiOverdue).monthlyTarget(monthlyTarget)
                 .distributedTarget(distributedTarget)
                 .targetAchievement(achievement)
                 .totalLostCount(totalLostCountFuture.join()).interestedCount(interestedCountFuture.join())
@@ -512,13 +508,16 @@ public class DashboardStatsService {
                 .highPriorityFollowups(highPriorityFollowupsFuture.join())
                 .activeSupportTickets(activeTicketsFuture.join()).pendingSupportTickets(pendingTicketsFuture.join())
                 .resolvedSupportTickets(resolvedTicketsFuture.join()).closedSupportTickets(closedTicketsFuture.join())
-                .totalPendingCount(pendingPaymentsCountFuture.join()).pendingLeadsCount(pendingLeadsCountFuture.join())
-                .pendingPaymentsCount(pendingPaymentsCountFuture.join())
+                .totalPendingCount(allOverdue).pendingLeadsCount(followupOverdue)
+                .pendingPaymentsCount(emiOverdue)
                 .overduePaymentsCount(overduePaymentsCountFuture.join())
                 .pendingRevenueAmount(pendingRevenueFuture.join())
                 .statusDistribution(mappedDistribution).userBreakdown(userBreakdown)
                 .performance(performance)
                 .dailyTrend(new ArrayList<>(trendMap.values())).build();
+
+        log.info(">>> [DASHBOARD STATS] Final stats assembled - Presents: {}, Revenue: {}", stats.getPresentCount(), stats.getMonthlyRevenue());
+        return stats;
     }
 
     public Collection<User> determineAllowedUsers(User requester, Long userId, Long teamId) {

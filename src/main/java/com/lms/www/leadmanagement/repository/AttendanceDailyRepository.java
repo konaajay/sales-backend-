@@ -61,14 +61,15 @@ public interface AttendanceDailyRepository extends JpaRepository<AttendanceDaily
     // ✅ Safe multi-user range (dashboard)
     @Query("""
                 SELECT a FROM AttendanceDaily a
-                WHERE a.user IN :users
+                WHERE a.user.id IN :userIds
                 AND a.date BETWEEN :start AND :end
                 AND (a.user.joiningDate IS NULL OR a.date >= a.user.joiningDate)
             """)
-    List<AttendanceDaily> findAllByUserInAndDateBetween(
-            List<User> users,
-            LocalDate start,
-            LocalDate end);
+    List<AttendanceDaily> findAllByUserIdInAndDateBetween(
+            @org.springframework.data.repository.query.Param("userIds") List<Long> userIds,
+            @org.springframework.data.repository.query.Param("start") LocalDate start,
+            @org.springframework.data.repository.query.Param("end") LocalDate end);
+
 
     // ✅ Safe single day (dashboard)
     @Query("""

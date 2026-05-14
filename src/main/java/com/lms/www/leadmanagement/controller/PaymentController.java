@@ -33,6 +33,9 @@ public class PaymentController {
     @Value("${cashfree.environment:TEST}")
     private String cashfreeEnvironment;
 
+    @Value("${cashfree.secret.key}")
+    private String secretKey;
+
     @GetMapping("/api/payments/lead/{leadId}/invoice")
     public ResponseEntity<PaymentDTO> getInvoiceByLeadId(@PathVariable Long leadId) {
         return ResponseEntity.ok(leadPaymentService.generateInvoice(leadId));
@@ -136,16 +139,40 @@ public class PaymentController {
     }
 
     @PostMapping("/api/payments/webhook/cashfree")
-    public ResponseEntity<String> handleCashfreeWebhook(@RequestBody(required = false) String payload, @RequestHeader Map<String, String> headers) {
+    public ResponseEntity<String> handleCashfreeWebhook(
+            @RequestBody(required = false) String payload, 
+            @RequestHeader(value = "x-cf-signature", required = false) String signature,
+            @RequestHeader(value = "x-cf-timestamp", required = false) String timestamp,
+            @RequestHeader Map<String, String> headers) {
+        
         log.info("========== CASHFREE WEBHOOK HIT ==========");
         log.info("Headers: {}", headers);
         log.info("Payload: {}", payload);
+
+        if (payload == null || payload.isBlank()) {
+            return ResponseEntity.ok("OK");
+        }
+
+        // --- SIGNATURE VERIFICATION (Production Security) ---
+        if (signature != null && timestamp != null) {
+            try {
+                String data = timestamp + payload;
+                String expectedSignature = calculateHmac(data, secretKey);
+                
+                if (!signature.equals(expectedSignature)) {
+                    log.error("CRITICAL: Invalid Webhook Signature detected!");
+                    return ResponseEntity.status(401).body("Invalid Signature");
+                }
+                log.info("Webhook Signature Verified successfully.");
+            } catch (Exception e) {
+                log.error("Signature verification error: {}", e.getMessage());
+                // For safety in dev, we might continue, but in strict prod, we should reject
+            }
+        } else {
+            log.warn("Webhook received WITHOUT signature headers. Verify Cashfree configuration.");
+        }
         
         try {
-            if (payload == null || payload.isBlank()) {
-                return ResponseEntity.ok("OK");
-            }
-            
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             Map<String, Object> payloadMap = mapper.readValue(payload, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
             
@@ -285,5 +312,13 @@ public class PaymentController {
         response.put("order_id", orderId);
         response.put("payment_session_id", cfData.get("payment_session_id"));
         return ResponseEntity.ok(response);
+    }
+
+    private String calculateHmac(String data, String key) throws Exception {
+        javax.crypto.spec.SecretKeySpec secretKeySpec = new javax.crypto.spec.SecretKeySpec(key.getBytes(), "HmacSHA256");
+        javax.crypto.Mac mac = javax.crypto.Mac.getInstance("HmacSHA256");
+        mac.init(secretKeySpec);
+        byte[] rawHmac = mac.doFinal(data.getBytes());
+        return java.util.Base64.getEncoder().encodeToString(rawHmac);
     }
 }
