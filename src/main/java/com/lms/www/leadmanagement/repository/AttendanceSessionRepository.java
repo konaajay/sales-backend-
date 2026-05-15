@@ -179,6 +179,13 @@ public interface AttendanceSessionRepository extends JpaRepository<AttendanceSes
             @org.springframework.data.repository.query.Param("end") LocalDateTime end);
 
     boolean existsByOfficeId(Long officeId);
+    
+    @Query("SELECT s FROM AttendanceSession s WHERE s.user.id = :userId ORDER BY s.checkInTime DESC")
+    List<AttendanceSession> _findFirstByUserIdOrderByCheckInTimeDesc(@org.springframework.data.repository.query.Param("userId") Long userId, Pageable pageable);
+
+    default Optional<AttendanceSession> findFirstByUserIdOrderByCheckInTimeDesc(Long userId) {
+        return _findFirstByUserIdOrderByCheckInTimeDesc(userId, PageRequest.of(0, 1)).stream().findFirst();
+    }
 
     @Query("""
                 SELECT s FROM AttendanceSession s

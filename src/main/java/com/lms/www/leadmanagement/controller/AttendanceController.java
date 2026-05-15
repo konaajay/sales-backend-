@@ -22,6 +22,12 @@ public class AttendanceController {
 
     private final AttendanceService attendanceService;
     private final UserService userService;
+    private final com.lms.www.leadmanagement.service.AdminService adminService;
+
+    @GetMapping("/offices")
+    public ResponseEntity<List<OfficeLocationDTO>> getAllOffices() {
+        return ResponseEntity.ok(adminService.getAllOffices());
+    }
 
     @PostMapping("/clock-in")
     public ResponseEntity<AttendanceDTO> clockIn(
