@@ -115,7 +115,7 @@ public interface LeadTaskRepository extends JpaRepository<LeadTask, Long> {
     boolean existsByLeadIdAndStatusAndDueDate(Long leadId, LeadTask.TaskStatus status, LocalDateTime dueDate);
 
     @Modifying
-    @Query("UPDATE LeadTask t SET t.status = com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.CANCELLED WHERE t.lead.id = :leadId AND t.status IN (com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.PENDING, com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.OVERDUE)")
+    @Query("UPDATE LeadTask t SET t.status = com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.CANCELLED, t.updatedAt = CURRENT_TIMESTAMP WHERE t.lead.id = :leadId AND t.status IN (com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.PENDING, com.lms.www.leadmanagement.entity.LeadTask$TaskStatus.OVERDUE)")
     void cancelAllPendingByLeadId(@Param("leadId") Long leadId);
 
     @Modifying

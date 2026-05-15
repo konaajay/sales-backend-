@@ -140,7 +140,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
             "sum(case when UPPER(l.status) = 'NEW' then 1 else 0 end) as newCount, " +
             "sum(case when UPPER(l.status) = 'CONTACTED' then 1 else 0 end) as contactedCount, " +
             "sum(case when UPPER(l.status) IN ('INTERESTED', 'UNDER_REVIEW') then 1 else 0 end) as interestedCount, " +
-            "sum(case when UPPER(l.status) = 'FOLLOW_UP' then 1 else 0 end) as followUpCount, " +
+            "sum(case when UPPER(l.status) IN ('FOLLOW_UP', 'EMI_FOLLOWUP') then 1 else 0 end) as followUpCount, " +
             "sum(case when UPPER(l.status) IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as convertedCount, " +
             "sum(case when UPPER(l.status) = 'REJECTED' then 1 else 0 end) as rejectedCount, " +
             "sum(case when UPPER(l.status) = 'REFUND' then 1 else 0 end) as refundCount, " +
@@ -158,7 +158,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
             "sum(case when UPPER(l.status) = 'NEW' then 1 else 0 end) as newCount, " +
             "sum(case when UPPER(l.status) = 'CONTACTED' then 1 else 0 end) as contactedCount, " +
             "sum(case when UPPER(l.status) IN ('INTERESTED', 'UNDER_REVIEW') then 1 else 0 end) as interestedCount, " +
-            "sum(case when UPPER(l.status) = 'FOLLOW_UP' then 1 else 0 end) as followUpCount, " +
+            "sum(case when UPPER(l.status) IN ('FOLLOW_UP', 'EMI_FOLLOWUP') then 1 else 0 end) as followUpCount, " +
             "sum(case when UPPER(l.status) IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as convertedCount, " +
             "sum(case when UPPER(l.status) = 'REJECTED' then 1 else 0 end) as rejectedCount, " +
             "sum(case when UPPER(l.status) = 'REFUND' then 1 else 0 end) as refundCount, " +
@@ -174,7 +174,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
             "sum(case when UPPER(l.status) = 'NEW' then 1 else 0 end) as newCount, " +
             "sum(case when UPPER(l.status) = 'CONTACTED' then 1 else 0 end) as contactedCount, " +
             "sum(case when UPPER(l.status) IN ('INTERESTED', 'UNDER_REVIEW') then 1 else 0 end) as interestedCount, " +
-            "sum(case when UPPER(l.status) = 'FOLLOW_UP' then 1 else 0 end) as followUpCount, " +
+            "sum(case when UPPER(l.status) IN ('FOLLOW_UP', 'EMI_FOLLOWUP') then 1 else 0 end) as followUpCount, " +
             "sum(case when UPPER(l.status) IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as convertedCount, " +
             "sum(case when UPPER(l.status) = 'REJECTED' then 1 else 0 end) as rejectedCount, " +
             "sum(case when UPPER(l.status) = 'REFUND' then 1 else 0 end) as refundCount, " +

@@ -45,8 +45,8 @@ public class AttendanceScheduler {
                 LocalTime shiftEnd = shift.getEndTime();
                 LocalDateTime shiftEndToday = session.getCheckInTime().toLocalDate().atTime(shiftEnd);
                 
-                // Add 1 minute buffer
-                if (now.isAfter(shiftEndToday.plusMinutes(1))) {
+                // Add 30 minute buffer
+                if (now.isAfter(shiftEndToday.plusMinutes(30))) {
                     log.info("Auto-checking out user {} due to shift end at {}", user.getName(), shiftEnd);
                     attendanceService.finalizeSession(session, shiftEndToday, true);
                 }

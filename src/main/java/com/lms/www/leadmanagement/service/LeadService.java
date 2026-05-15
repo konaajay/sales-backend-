@@ -167,12 +167,12 @@ public class LeadService {
                 securityService.validateAccess(user, lead.getCreatedBy().getId());
             }
         }
-        String currentStatus = lead.getStatus() != null ? lead.getStatus() : "NEW";
-        String requestedStatus = request.getStatus() != null ? request.getStatus().toUpperCase() : "NEW";
+        String currentStatus = lead.getStatus() != null ? lead.getStatus().trim().toUpperCase() : "NEW";
+        String requestedStatus = request.getStatus() != null ? request.getStatus().trim().toUpperCase() : "NEW";
 
-        if (List.of("PAID", "SUCCESS", "EMI", "CONVERTED").contains(currentStatus.toUpperCase())) {
+        if (List.of("PAID", "SUCCESS", "EMI", "CONVERTED", "EMI_FOLLOWUP").contains(currentStatus)) {
             // Allow transitions strictly for payment tracking
-            if (!List.of("PAID", "EMI", "LOST", "REJECTED").contains(requestedStatus)) {
+            if (!List.of("PAID", "EMI", "EMI_FOLLOWUP", "LOST", "REJECTED").contains(requestedStatus)) {
                 throw new InvalidRequestException("Cannot change status of a finalized lead back to early pipeline stages.");
             }
         }
@@ -343,15 +343,22 @@ public class LeadService {
     private void triggerPipelineActions(Lead lead, String status, StatusUpdateRequest request) {
         String upperStatus = status != null ? status.toUpperCase() : "";
         
-        // Strategic Fix: Never create follow-up tasks for terminal/lost statuses
-        List<String> terminalStatuses = List.of("LOST", "NOT_INTERESTED", "REJECTED", "CLOSED");
-        if (terminalStatuses.contains(upperStatus)) {
-            log.info("[PIPELINE] Terminal status '{}' detected for Lead #{}. Cancelling all pending tasks.", upperStatus, lead.getId());
+        // 1. Holistic Task Cleanup: Clear all active tasks if this is a stage change or rescheduling move
+        boolean hasExplicitDueDate = request.getDueDate() != null && !request.getDueDate().isEmpty();
+        List<String> terminalStatuses = List.of("LOST", "NOT_INTERESTED", "REJECTED", "CLOSED", "PAID", "SUCCESS", "CONVERTED");
+        
+        // Strategic: If we are rescheduling (EMI with date) or finishing (terminal), clear the slate first
+        if (terminalStatuses.contains(upperStatus) || ("EMI".equalsIgnoreCase(upperStatus) && hasExplicitDueDate) || "EMI_FOLLOWUP".equalsIgnoreCase(upperStatus)) {
+            log.info("[PIPELINE] Task cleanup for Lead #{} (Status: {}).", lead.getId(), upperStatus);
+            // Use CANCELLED for automated cleanup to avoid confusion with user-initiated completions
             leadTaskRepository.cancelAllPendingByLeadId(lead.getId());
-            return;
+            
+            // If truly terminal (and not a reschedule), we stop here
+            if (terminalStatuses.contains(upperStatus) && !"EMI".equalsIgnoreCase(upperStatus) && !"EMI_FOLLOWUP".equalsIgnoreCase(upperStatus)) {
+                return;
+            }
         }
 
-        boolean hasExplicitDueDate = request.getDueDate() != null && !request.getDueDate().isEmpty();
         User requester = securityService.getCurrentUser();
 
         pipelineStageRepository.findByStatusValue(status).ifPresent(stage -> {
@@ -372,14 +379,16 @@ public class LeadService {
 
                 if (!leadTaskRepository.existsByLeadIdAndStatusAndDueDate(lead.getId(), LeadTask.TaskStatus.PENDING,
                         dueDate)) {
+                    String taskType = ("EMI".equalsIgnoreCase(status) || "EMI_FOLLOWUP".equalsIgnoreCase(status)) ? "EMI_COLLECTION" : "FOLLOW_UP";
+                    String titlePrefix = ("EMI".equalsIgnoreCase(status) || "EMI_FOLLOWUP".equalsIgnoreCase(status)) ? "EMI Follow-up: " : "Follow-up: ";
                     leadTaskRepository.save(LeadTask.builder()
                             .lead(lead)
                             .assignedTo(lead.getAssignedTo())
                             .createdBy(requester)
-                            .title("Follow-up: " + stage.getLabel())
+                            .title(titlePrefix + stage.getLabel())
                             .dueDate(dueDate)
                             .status(LeadTask.TaskStatus.PENDING)
-                            .taskType("FOLLOW_UP")
+                            .taskType(taskType)
                             .build());
                 }
             }
@@ -393,23 +402,22 @@ public class LeadService {
                         request.getDueDate().contains("T") ? request.getDueDate() : request.getDueDate() + "T10:00:00");
                 if (!leadTaskRepository.existsByLeadIdAndStatusAndDueDate(lead.getId(), LeadTask.TaskStatus.PENDING,
                         dueDate)) {
+                    String taskType = ("EMI".equalsIgnoreCase(status) || "EMI_FOLLOWUP".equalsIgnoreCase(status)) ? "EMI_COLLECTION" : "FOLLOW_UP";
                     leadTaskRepository.save(LeadTask.builder()
                             .lead(lead)
                             .assignedTo(lead.getAssignedTo())
                             .createdBy(requester)
-                            .title("Follow-up: " + status)
+                            .title(("EMI".equalsIgnoreCase(status) || "EMI_FOLLOWUP".equalsIgnoreCase(status)) ? "EMI Follow-up" : "Follow-up: " + status)
                             .dueDate(dueDate)
                             .status(LeadTask.TaskStatus.PENDING)
-                            .taskType("FOLLOW_UP")
+                            .taskType(taskType)
                             .build());
                 }
             } catch (Exception e) {
             }
         }
 
-        if ("PAID".equalsIgnoreCase(status) || "SUCCESS".equalsIgnoreCase(status) || "EMI".equalsIgnoreCase(status)) {
-            leadTaskRepository.completeAllPendingByLeadId(lead.getId());
-        }
+
     }
 
     @Transactional

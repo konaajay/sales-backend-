@@ -100,14 +100,16 @@ public class AttendanceService {
         AttendanceShift shift = user.getShift();
         AttendancePolicy policy = policyRepository.findByOfficeId(session.getOffice().getId()).orElseGet(() -> AttendancePolicy.builder().office(session.getOffice()).build());
 
+        boolean wfh = isWfhApproved(session.getUser().getId());
+        boolean inside = wfh || calculateDistance(request.getLat(), request.getLng(), session.getOffice().getLatitude(), session.getOffice().getLongitude()) <= session.getOffice().getRadius();
+
         LocalTime shiftEnd = (shift != null) ? shift.getEndTime() : (policy.getShiftEndTime() != null ? policy.getShiftEndTime() : LocalTime.of(18, 30));
-        if (now.toLocalTime().isAfter(shiftEnd.plusMinutes(1))) {
+        
+        // Strategic: Force checkout if more than 30 mins after shift end OR if shift ended and user is outside
+        if (now.toLocalTime().isAfter(shiftEnd.plusMinutes(30)) || (now.toLocalTime().isAfter(shiftEnd) && !inside)) {
             finalizeSession(session, now, true);
             return mapToDTO(session, todayInIndia());
         } 
-
-        boolean wfh = isWfhApproved(session.getUser().getId());
-        boolean inside = wfh || calculateDistance(request.getLat(), request.getLng(), session.getOffice().getLatitude(), session.getOffice().getLongitude()) <= session.getOffice().getRadius();
         resolveStateAndAccumulateTime(session, policy, shift, now, inside);
         session.setLastLat(request.getLat());
         session.setLastLng(request.getLng());

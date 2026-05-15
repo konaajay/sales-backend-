@@ -817,9 +817,10 @@ public class LeadPaymentService {
         fee.setPaymentStatus(calculatePaymentStatus(fee));
         studentFeeRepository.save(fee);
 
-        // All payment-related leads are CONVERTED
-        if (!"CONVERTED".equalsIgnoreCase(lead.getStatus())) {
-            lead.setStatus("CONVERTED");
+        // Automated status transition based on balance
+        String newStatus = fee.getBalanceAmount().compareTo(BigDecimal.ZERO) > 0 ? "EMI" : "CONVERTED";
+        if (!newStatus.equalsIgnoreCase(lead.getStatus())) {
+            lead.setStatus(newStatus);
             leadRepository.save(lead);
         }
     }

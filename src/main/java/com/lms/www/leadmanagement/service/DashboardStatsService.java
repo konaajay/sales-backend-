@@ -126,7 +126,7 @@ public class DashboardStatsService {
 
         mappedDistribution.putIfAbsent("NEW", 0L);
         mappedDistribution.putIfAbsent("CONTACTED", 0L);
-        mappedDistribution.putIfAbsent("FOLLOW_UP", mappedDistribution.getOrDefault("FOLLOWUP", 0L));
+        mappedDistribution.putIfAbsent("FOLLOW_UP", mappedDistribution.getOrDefault("FOLLOWUP", 0L) + mappedDistribution.getOrDefault("EMI_FOLLOWUP", 0L));
         mappedDistribution.putIfAbsent("CONVERTED",
                 mappedDistribution.getOrDefault("PAID", 0L) + mappedDistribution.getOrDefault("SUCCESS", 0L));
 
