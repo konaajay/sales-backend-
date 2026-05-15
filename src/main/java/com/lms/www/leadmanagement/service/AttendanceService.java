@@ -59,13 +59,16 @@ public class AttendanceService {
         boolean wfh = isWfhApproved(userId);
         
         // Strategic: Prioritize the user's assigned office
-        OfficeLocation office = user.getAssignedOffice();
+        OfficeLocation assigned = user.getAssignedOffice();
+        final OfficeLocation office;
         
         // Fallback to closest if no office assigned
-        if (office == null) {
+        if (assigned == null) {
             office = officeRepository.findAll().stream()
                 .min(Comparator.comparingDouble(o -> calculateDistance(request.getLat(), request.getLng(), o.getLatitude(), o.getLongitude())))
                 .orElseThrow(() -> new RuntimeException("No office locations configured and user has no assigned office."));
+        } else {
+            office = assigned;
         }
 
         double distance = calculateDistance(request.getLat(), request.getLng(), office.getLatitude(), office.getLongitude());
@@ -200,9 +203,10 @@ public class AttendanceService {
             return Optional.of(mapToDTO(session.get(), todayInIndia()));
         } else {
             User user = userRepository.findById(userId).orElse(null);
-            OfficeLocation office = (user != null) ? user.getAssignedOffice() : null;
+            OfficeLocation assigned = (user != null) ? user.getAssignedOffice() : null;
+            final OfficeLocation office;
 
-            if (office == null) {
+            if (assigned == null) {
                 // Strategic: Fallback to closest if no office explicitly assigned
                 AttendanceSession lastSession = sessionRepository.findFirstByUserIdOrderByCheckInTimeDesc(userId).orElse(null);
                 double lastLat = lastSession != null ? lastSession.getLastLat() : 0;
@@ -211,6 +215,8 @@ public class AttendanceService {
                 office = offices.stream()
                         .min(Comparator.comparingDouble(o -> calculateDistance(lastLat, lastLng, o.getLatitude(), o.getLongitude())))
                         .orElse(null);
+            } else {
+                office = assigned;
             }
 
             return Optional.of(AttendanceDTO.builder()
