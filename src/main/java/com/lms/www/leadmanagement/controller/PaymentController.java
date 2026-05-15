@@ -71,11 +71,25 @@ public class PaymentController {
         return ResponseEntity.ok().build();
     }
 
-    @PostMapping("/api/payments/manual-record")
+    @Autowired
+    private com.lms.www.leadmanagement.service.FileStorageService fileStorageService;
+
+    @PostMapping(value = "/api/payments/manual-record", consumes = {"multipart/form-data"})
     @PreAuthorize("hasAuthority('UPDATE_LEAD_STATUS') or hasAuthority('ADMIN') or hasAuthority('MANAGER')")
     public ResponseEntity<com.lms.www.leadmanagement.dto.PaymentDTO> recordManualPayment(
-            @RequestBody java.util.Map<String, Object> payload) {
-        return ResponseEntity.ok(leadPaymentService.recordManualPayment(payload));
+            @RequestParam("data") String dataJson,
+            @RequestParam(value = "receipt", required = false) org.springframework.web.multipart.MultipartFile receipt) throws Exception {
+        
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
+        java.util.Map<String, Object> payload = mapper.readValue(dataJson, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+        
+        String receiptUrl = null;
+        if (receipt != null && !receipt.isEmpty()) {
+            receiptUrl = fileStorageService.save(receipt, "payments");
+        }
+        
+        return ResponseEntity.ok(leadPaymentService.recordManualPayment(payload, receiptUrl));
     }
 
     @GetMapping("/api/payments/lead/{leadId}/fee-structure")

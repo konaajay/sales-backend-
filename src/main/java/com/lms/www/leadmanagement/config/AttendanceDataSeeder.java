@@ -30,8 +30,8 @@ public class AttendanceDataSeeder implements CommandLineRunner {
 
             AttendanceShift dayShift = AttendanceShift.builder()
                     .name("Day Shift (Standard)")
-                    .startTime(LocalTime.of(9, 0))
-                    .endTime(LocalTime.of(18, 0))
+                    .startTime(LocalTime.of(10, 0))
+                    .endTime(LocalTime.of(19, 0))
                     .graceMinutes(15)
                     .minFullDayMinutes(480)
                     .minHalfDayMinutes(240)
@@ -64,10 +64,10 @@ public class AttendanceDataSeeder implements CommandLineRunner {
         if (officeRepository.count() == 0) {
             System.out.println("SEEDING: Initializing default office location...");
             OfficeLocation hq = OfficeLocation.builder()
-                    .name("Main HQ")
-                    .latitude(17.3850)
-                    .longitude(78.4867)
-                    .radius(100000.0) // 100km radius for flexible testing
+                    .name("gYantrix")
+                    .latitude(17.4535791)
+                    .longitude(78.3720483)
+                    .radius(100.0) 
                     .build();
             officeRepository.save(hq);
             System.out.println("SEEDING COMPLETE: Primary office lead established.");

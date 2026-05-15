@@ -737,7 +737,7 @@ public class LeadPaymentService {
     }
 
     @Transactional
-    public PaymentDTO recordManualPayment(Map<String, Object> data) {
+    public PaymentDTO recordManualPayment(Map<String, Object> data, String receiptUrl) {
         Long leadId = Long.valueOf(data.get("leadId").toString());
         BigDecimal amount = new BigDecimal(data.get("amount").toString());
         BigDecimal totalAmount = data.containsKey("totalAmount") ? new BigDecimal(data.get("totalAmount").toString())
@@ -759,6 +759,7 @@ public class LeadPaymentService {
                 .note((String) data.get("note"))
                 .paymentType((String) data.get("paymentType"))
                 .paymentGatewayId("MANUAL_" + System.currentTimeMillis())
+                .receiptUrl(receiptUrl)
                 .updatedBy(securityService.getCurrentUser())
                 .build();
 

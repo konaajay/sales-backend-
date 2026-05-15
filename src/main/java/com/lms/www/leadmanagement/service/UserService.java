@@ -104,6 +104,17 @@ public class UserService {
     }
 
     private void validateUniqueness(UserDTO dto) {
+        if (dto.getMobile() == null || !dto.getMobile().matches("^[0-9]{10}$")) {
+            throw new InvalidRequestException("Mobile number must be exactly 10 digits.");
+        }
+
+        if (dto.getPassword() == null || dto.getPassword().length() < 8 || 
+            !dto.getPassword().matches(".*[A-Z].*") || 
+            !dto.getPassword().matches(".*[0-9].*") || 
+            !dto.getPassword().matches(".*[@#$%^&+=!].*")) {
+            throw new InvalidRequestException("Password must be at least 8 characters long and contain at least one uppercase letter, one number, and one special character (@#$%^&+=!).");
+        }
+
         if (userRepository.existsByEmail(dto.getEmail())) {
             throw new InvalidRequestException("Email already registered: " + dto.getEmail());
         }
