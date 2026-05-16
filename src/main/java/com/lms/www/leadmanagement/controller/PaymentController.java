@@ -30,6 +30,9 @@ public class PaymentController {
     @Autowired
     private com.lms.www.leadmanagement.repository.LeadRepository leadRepository;
 
+    @Autowired
+    private com.lms.www.leadmanagement.service.SecurityService securityService;
+
     @Value("${cashfree.environment:TEST}")
     private String cashfreeEnvironment;
 
@@ -42,7 +45,7 @@ public class PaymentController {
     }
 
     @PutMapping("/api/payments/{id}/status")
-    @PreAuthorize("hasAuthority('UPDATE_LEAD_STATUS') or hasAuthority('ADMIN') or hasAuthority('MANAGER')")
+    @PreAuthorize("hasAnyAuthority('UPDATE_LEAD_STATUS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ADMIN', 'MANAGER')")
     public ResponseEntity<Void> updatePaymentStatus(
             @PathVariable Long id,
             @RequestParam String status,
@@ -63,7 +66,7 @@ public class PaymentController {
     }
 
     @PostMapping("/api/payments/{id}/split")
-    @PreAuthorize("hasAuthority('UPDATE_LEAD_STATUS') or hasAuthority('ADMIN') or hasAuthority('MANAGER')")
+    @PreAuthorize("hasAnyAuthority('UPDATE_LEAD_STATUS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ADMIN', 'MANAGER')")
     public ResponseEntity<Void> splitPayment(
             @PathVariable Long id,
             @RequestBody PaymentSplitRequest splitRequest) {
@@ -75,7 +78,7 @@ public class PaymentController {
     private com.lms.www.leadmanagement.service.FileStorageService fileStorageService;
 
     @PostMapping(value = "/api/payments/manual-record", consumes = {"multipart/form-data"})
-    @PreAuthorize("hasAuthority('UPDATE_LEAD_STATUS') or hasAuthority('ADMIN') or hasAuthority('MANAGER')")
+    @PreAuthorize("hasAnyAuthority('UPDATE_LEAD_STATUS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ADMIN', 'MANAGER')")
     public ResponseEntity<com.lms.www.leadmanagement.dto.PaymentDTO> recordManualPayment(
             @RequestParam("data") String dataJson,
             @RequestParam(value = "receipt", required = false) org.springframework.web.multipart.MultipartFile receipt) throws Exception {
@@ -90,6 +93,20 @@ public class PaymentController {
         }
         
         return ResponseEntity.ok(leadPaymentService.recordManualPayment(payload, receiptUrl));
+    }
+
+    @PostMapping("/api/payments/{id}/approve")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER', 'ADMIN', 'MANAGER')")
+    public ResponseEntity<Void> approvePayment(@PathVariable Long id) {
+        leadPaymentService.approvePayment(id, securityService.getCurrentUser());
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/api/payments/{id}/reject")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER', 'ADMIN', 'MANAGER')")
+    public ResponseEntity<Void> rejectPayment(@PathVariable Long id, @RequestParam(required = false) String reason) {
+        leadPaymentService.rejectPayment(id, reason != null ? reason : "Unspecified", securityService.getCurrentUser());
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/api/payments/lead/{leadId}/fee-structure")
@@ -203,7 +220,7 @@ public class PaymentController {
 
                     // Find pending payment record by gateway ID
                     com.lms.www.leadmanagement.entity.Payment p = paymentRepository
-                            .findByPaymentGatewayId(gatewayOrderId)
+                            .findTopByPaymentGatewayIdOrderByCreatedAtDesc(gatewayOrderId)
                             .orElse(null);
 
                     if (p != null) {
@@ -232,7 +249,7 @@ public class PaymentController {
     @GetMapping("/api/public/payments/order/{orderId}")
     public ResponseEntity<Map<String, Object>> getPublicOrderDetails(@PathVariable String orderId) {
         com.lms.www.leadmanagement.entity.Payment p = paymentRepository
-                .findByPaymentGatewayId(orderId)
+                .findTopByPaymentGatewayIdOrderByCreatedAtDesc(orderId)
                 .orElseThrow(() -> new com.lms.www.leadmanagement.exception.ResourceNotFoundException("Order not found"));
         
         com.lms.www.leadmanagement.entity.Lead lead = leadRepository.findById(p.getLeadId()).orElseThrow();
@@ -286,7 +303,7 @@ public class PaymentController {
     @GetMapping("/api/public/payments/invoice")
     public ResponseEntity<Map<String, Object>> getPublicInvoice(@RequestParam("order_id") String orderId) {
         com.lms.www.leadmanagement.entity.Payment p = paymentRepository
-                .findByPaymentGatewayId(orderId)
+                .findTopByPaymentGatewayIdOrderByCreatedAtDesc(orderId)
                 .orElseThrow(() -> new com.lms.www.leadmanagement.exception.ResourceNotFoundException("Invoice not found"));
         
         // Only allow access if paid

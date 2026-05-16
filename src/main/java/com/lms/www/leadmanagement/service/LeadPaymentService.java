@@ -10,6 +10,7 @@ import com.lms.www.leadmanagement.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -192,8 +193,8 @@ public class LeadPaymentService {
         result.put("gatewayStatus", cfOrder.getOrder_status());
 
         if ("PAID".equalsIgnoreCase(cfOrder.getOrder_status())) {
-            Payment p = paymentRepository.findByPaymentGatewayId(orderId)
-                    .orElseThrow(() -> new ResourceNotFoundException("Payment record not found in DB"));
+            Payment p = paymentRepository.findTopByPaymentGatewayIdOrderByCreatedAtDesc(orderId)
+                    .orElseThrow(() -> new ResourceNotFoundException("Payment not found in DB"));
 
             if (p.getStatus() != Payment.Status.PAID && p.getStatus() != Payment.Status.SUCCESS) {
                 updatePaymentStatus(p.getId(), "PAID", "CASHFREE_VERIFIED", "Manual Verification Success",
@@ -206,7 +207,7 @@ public class LeadPaymentService {
             }
         } else if ("FAILED".equalsIgnoreCase(cfOrder.getOrder_status())
                 || "CANCELLED".equalsIgnoreCase(cfOrder.getOrder_status())) {
-            Payment p = paymentRepository.findByPaymentGatewayId(orderId).orElse(null);
+            Payment p = paymentRepository.findTopByPaymentGatewayIdOrderByCreatedAtDesc(orderId).orElse(null);
             if (p != null && p.getStatus() == Payment.Status.PENDING) {
                 updatePaymentStatus(p.getId(), "FAILED", "CASHFREE_VERIFIED",
                         "Gateway reports failure: " + cfOrder.getOrder_status(), null, null);
@@ -750,21 +751,157 @@ public class LeadPaymentService {
             securityService.validateAccess(requester, lead.getAssignedTo().getId());
         }
 
-        Payment payment = Payment.builder()
+        String utr = (String) data.get("utr");
+        if (utr != null && !utr.isBlank()) {
+            if (paymentRepository.existsByPaymentGatewayIdAndStatusNot(utr, Payment.Status.REJECTED)) {
+                log.error("Duplicate Payment Protocol Detected: Active UTR {} already exists in system.", utr);
+                throw new InvalidRequestException("Accounting Violation: This UTR (" + utr + ") has already been recorded for another active payment.");
+            }
+        }
+
+        boolean isManagerOrAdmin = securityService.isAdmin(requester) || securityService.isManager(requester);
+        BigDecimal discount = data.containsKey("discount") ? new BigDecimal(data.get("discount").toString()) : BigDecimal.ZERO;
+        String paymentMethod = (String) data.get("paymentMethod");
+        String note = (String) data.get("note");
+        
+        // Try to find an existing installment to fulfill (PENDING, REJECTED, or OVERDUE)
+        List<Payment> fulfillableInstallments = paymentRepository.findByLeadId(leadId).stream()
+                .filter(p -> (p.getStatus() == Payment.Status.PENDING || p.getStatus() == Payment.Status.REJECTED || p.getStatus() == Payment.Status.OVERDUE) 
+                        && "EMI_INSTALLMENT".equals(p.getPaymentType()))
+                .sorted(Comparator.comparing(p -> p.getDueDate() != null ? p.getDueDate() : LocalDateTime.MAX))
+                .collect(Collectors.toList());
+
+        Payment payment;
+        Payment.Status targetStatus = isManagerOrAdmin ? Payment.Status.PAID : Payment.Status.PENDING_APPROVAL;
+        
+        if (!fulfillableInstallments.isEmpty()) {
+            // Update the earliest fulfillable installment
+            payment = fulfillableInstallments.get(0);
+            BigDecimal originalAmount = payment.getAmount() != null ? payment.getAmount() : BigDecimal.ZERO;
+            
+            // --- PARTIAL PAYMENT LOGIC ---
+            // If the amount paid is less than the scheduled installment, create a new installment for the remainder
+            if (amount.compareTo(originalAmount) < 0) {
+                BigDecimal remainder = originalAmount.subtract(amount);
+                log.info(">>> Partial Payment Protocol: Scheduled ₹{}, Paid ₹{}. Creating remainder record for ₹{}", originalAmount, amount, remainder);
+                
+                Payment remainderInst = Payment.builder()
+                        .leadId(leadId)
+                        .amount(remainder)
+                        .totalAmount(totalAmount)
+                        .status(Payment.Status.PENDING)
+                        .paymentType("EMI_INSTALLMENT")
+                        .dueDate(payment.getDueDate() != null ? payment.getDueDate().plusDays(7) : LocalDateTime.now().plusDays(7))
+                        .build();
+                paymentRepository.save(remainderInst);
+                
+                // Create Task for remainder
+                createLeadTask(lead, remainderInst.getDueDate(), "EMI Collection - Remainder (Partial)", "EMI_COLLECTION");
+            }
+            // -----------------------------
+
+            payment.setAmount(amount);
+            payment.setTotalAmount(totalAmount);
+            payment.setStatus(targetStatus);
+            payment.setPaymentMethod(paymentMethod);
+            payment.setPaymentGatewayId(utr != null && !utr.isBlank() ? utr : "MANUAL_" + System.currentTimeMillis());
+            payment.setReceiptUrl(receiptUrl);
+            payment.setNote(note);
+            payment.setUpdatedBy(requester);
+            log.info(">>> Fulfilling existing PENDING installment ID={} for lead {}", payment.getId(), leadId);
+        } else {
+            // Create new payment record
+            payment = Payment.builder()
                 .leadId(leadId)
                 .amount(amount)
                 .totalAmount(totalAmount)
-                .status(Payment.Status.PAID)
-                .paymentMethod((String) data.get("paymentMethod"))
-                .note((String) data.get("note"))
-                .paymentType((String) data.get("paymentType"))
-                .paymentGatewayId("MANUAL_" + System.currentTimeMillis())
+                .status(targetStatus)
+                .paymentType(data.getOrDefault("paymentType", "EMI_INSTALLMENT").toString())
+                .paymentMethod(paymentMethod)
+                .paymentGatewayId((utr != null && !utr.isBlank()) ? utr : "MANUAL_" + System.currentTimeMillis())
                 .receiptUrl(receiptUrl)
-                .updatedBy(securityService.getCurrentUser())
+                .note(note)
+                .updatedBy(requester)
                 .build();
+        }
 
         Payment saved = paymentRepository.save(payment);
-        processSuccessfulPayment(saved, amount, (String) data.get("nextDueDate"));
+        log.info(">>> Primary Manual Payment Saved: ID={}, Amount={}, Status={}", saved.getId(), saved.getAmount(), saved.getStatus());
+
+        // Handle multiple installments if provided
+        Object installmentsObj = data.get("installments");
+        if (installmentsObj instanceof List) {
+            List<Map<String, Object>> installments = (List<Map<String, Object>>) installmentsObj;
+            log.info(">>> Processing {} manual installments for lead {}", installments.size(), leadId);
+            
+            // CLEANUP: Delete other PENDING installments to prevent duplicates when overwriting structure
+            // But don't delete the one we just fulfilled (it's now PAID or PENDING_APPROVAL)
+            paymentRepository.findByLeadId(leadId).stream()
+                .filter(p -> p.getStatus() == Payment.Status.PENDING && "EMI_INSTALLMENT".equals(p.getPaymentType()) && !p.getId().equals(saved.getId()))
+                .forEach(p -> paymentRepository.delete(p));
+            paymentRepository.flush();
+            
+            for (Map<String, Object> instData : installments) {
+                try {
+                    Object amtObj = instData.get("amount");
+                    if (amtObj == null) continue;
+                    BigDecimal instAmount = new BigDecimal(amtObj.toString());
+                    if (instAmount.compareTo(BigDecimal.ZERO) <= 0) continue;
+
+                    String dueDateStr = (String) instData.get("dueDate");
+                    LocalDateTime dueDate = null;
+                    if (dueDateStr != null && !dueDateStr.isBlank()) {
+                        try {
+                            // Resilient parsing for ISO-like formats
+                            if (!dueDateStr.contains("T")) {
+                                dueDateStr += "T10:00:00";
+                            }
+                            // If it's missing seconds (e.g. 2026-05-16T18:46), append them
+                            if (dueDateStr.length() == 16) {
+                                dueDateStr += ":00";
+                            }
+                            dueDate = LocalDateTime.parse(dueDateStr);
+                        } catch (Exception e) {
+                            log.warn(">>> Failed to parse installment due date '{}': {}", dueDateStr, e.getMessage());
+                        }
+                    }
+
+                    Payment inst = Payment.builder()
+                            .leadId(leadId)
+                            .amount(instAmount)
+                            .totalAmount(totalAmount)
+                            .status(Payment.Status.PENDING)
+                            .paymentType("EMI_INSTALLMENT")
+                            .dueDate(dueDate)
+                            .paymentMethod(paymentMethod)
+                            .updatedBy(requester)
+                            .build();
+                    Payment savedInst = paymentRepository.saveAndFlush(inst);
+                    log.info(">>> Saved manual installment: ID={}, Amount={}, DueDate={}", savedInst.getId(), savedInst.getAmount(), savedInst.getDueDate());
+                    
+                    if (dueDate != null) {
+                        createLeadTask(lead, dueDate, "EMI Collection - Planned", "EMI_COLLECTION");
+                    }
+                } catch (Exception e) {
+                    log.error(">>> Error processing manual installment: {}", e.getMessage(), e);
+                }
+            }
+        } else {
+            log.info(">>> No installments list found in manual payment data for lead {}. Received type: {}", leadId, installmentsObj != null ? installmentsObj.getClass().getName() : "null");
+        }
+        
+        // Sync Fee structure (create it if it doesn't exist)
+        // If not manager, paidAmount added is ZERO (it's pending approval)
+        BigDecimal paidToSync = (targetStatus == Payment.Status.PAID) ? amount : BigDecimal.ZERO;
+        log.info(">>> Syncing StudentFee for lead {}. PaidThisTime={}", leadId, paidToSync);
+        syncStudentFee(lead, paidToSync, totalAmount, discount, null);
+
+        // Only convert lead if immediately PAID by manager/admin
+        if (targetStatus == Payment.Status.PAID) {
+            processSuccessfulPayment(saved, amount, (String) data.get("nextDueDate"));
+        } else {
+            log.info(">>> Manual Payment by {} requires Manager Approval. Lead conversion skipped.", requester.getEmail());
+        }
 
         return convertToDTO(saved);
     }
@@ -793,14 +930,20 @@ public class LeadPaymentService {
             fee.setDiscount(discount);
         }
 
-        BigDecimal currentPaid = fee.getPaidAmount() != null ? fee.getPaidAmount() : BigDecimal.ZERO;
-        fee.setPaidAmount(currentPaid.add(paidAmount));
-
-        // Calculate Installments
+        // Calculate Installments and Total Paid from database for source of truth
         List<Payment> allPayments = paymentRepository.findByLeadId(lead.getId());
+        BigDecimal totalPaidCalculated = allPayments.stream()
+                .filter(p -> p.getStatus() != null && 
+                        (p.getStatus() == Payment.Status.PAID || p.getStatus() == Payment.Status.SUCCESS || p.getStatus() == Payment.Status.COMPLETED))
+                .map(p -> p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        
+        fee.setPaidAmount(totalPaidCalculated);
+
         int total = allPayments.size();
         int paidCount = (int) allPayments.stream()
-                .filter(p -> p.getStatus() == Payment.Status.PAID || p.getStatus() == Payment.Status.SUCCESS)
+                .filter(p -> p.getStatus() != null && 
+                        (p.getStatus() == Payment.Status.PAID || p.getStatus() == Payment.Status.SUCCESS || p.getStatus() == Payment.Status.COMPLETED))
                 .count();
 
         fee.setTotalInstallments(total);
@@ -819,11 +962,92 @@ public class LeadPaymentService {
         studentFeeRepository.save(fee);
 
         // Automated status transition based on balance
-        String newStatus = fee.getBalanceAmount().compareTo(BigDecimal.ZERO) > 0 ? "EMI" : "CONVERTED";
+        String newStatus;
+        if (fee.getBalanceAmount().compareTo(BigDecimal.ZERO) <= 0) {
+            newStatus = "CONVERTED";
+        } else {
+            // Use the detailed payment status (PRE_PAYMENT, POST_PAYMENT_1, etc.)
+            newStatus = fee.getPaymentStatus();
+        }
+
         if (!newStatus.equalsIgnoreCase(lead.getStatus())) {
+            log.info(">>> Transitioning Lead {} status from {} to {}", lead.getId(), lead.getStatus(), newStatus);
             lead.setStatus(newStatus);
             leadRepository.save(lead);
         }
+    }
+
+    @Transactional
+    public void approvePayment(Long paymentId, User requester) {
+        if (!securityService.isAdmin(requester) && !securityService.isManager(requester)) {
+            throw new AccessDeniedException("Only Managers and Admins can approve manual payments.");
+        }
+
+        Payment payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Payment not found"));
+
+        if (payment.getStatus() != Payment.Status.PENDING_APPROVAL) {
+            throw new InvalidRequestException("This payment is not awaiting approval.");
+        }
+
+        payment.setStatus(Payment.Status.PAID);
+        payment.setUpdatedBy(requester);
+        paymentRepository.save(payment);
+
+        // Process successful payment logic
+        processSuccessfulPayment(payment, payment.getAmount(), null);
+        
+        log.info(">>> Manager {} Approved Payment Protocol for Lead ID: {}", requester.getEmail(), payment.getLeadId());
+    }
+
+    @Transactional
+    public void rejectPayment(Long paymentId, String reason, User requester) {
+        if (!securityService.isAdmin(requester) && !securityService.isManager(requester)) {
+            throw new AccessDeniedException("Only Managers and Admins can reject manual payments.");
+        }
+
+        Payment payment = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Payment not found"));
+
+        if (payment.getStatus() != Payment.Status.PENDING_APPROVAL) {
+            throw new InvalidRequestException("This payment is not awaiting approval.");
+        }
+
+        payment.setStatus(Payment.Status.REJECTED);
+        payment.setNote(payment.getNote() + " | REJECTED: " + reason);
+        payment.setUpdatedBy(requester);
+        paymentRepository.save(payment);
+
+        int instNum = getInstallmentNumber(payment);
+        String granularStatus = "REJECTED_INSTALLMENT_" + instNum;
+
+        // SYNC: Reflect rejection in StudentFee record if it exists
+        studentFeeRepository.findByLeadId(payment.getLeadId()).ifPresent(fee -> {
+            fee.setPaymentStatus(granularStatus);
+            studentFeeRepository.save(fee);
+        });
+
+        // CRITICAL: Update Lead status to REJECTED to match protocol
+        leadRepository.findById(payment.getLeadId()).ifPresent(lead -> {
+            log.info(">>> Transitioning Lead {} status from {} to {} due to payment rejection", lead.getId(), lead.getStatus(), granularStatus);
+            lead.setStatus(granularStatus);
+            leadRepository.save(lead);
+            leadRepository.flush();
+        });
+
+        log.info(">>> Manager {} Rejected Payment {} for Lead ID: {}. Reason: {}", requester.getEmail(), instNum, payment.getLeadId(), reason);
+    }
+
+    private int getInstallmentNumber(Payment payment) {
+        List<Payment> all = paymentRepository.findByLeadId(payment.getLeadId());
+        // Sort by creation date to find the sequence
+        all.sort(Comparator.comparing(p -> p.getCreatedAt() != null ? p.getCreatedAt() : LocalDateTime.MIN));
+        for (int i = 0; i < all.size(); i++) {
+            if (all.get(i).getId().equals(payment.getId())) {
+                return i + 1;
+            }
+        }
+        return 1;
     }
 
     private PaymentDTO convertToDTO(Payment payment) {
@@ -924,7 +1148,9 @@ public class LeadPaymentService {
             // calculate a virtual fee summary from the installments
             BigDecimal total = payments.stream().map(p -> p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
-            BigDecimal paid = payments.stream().filter(p -> "PAID".equalsIgnoreCase(p.getStatus()))
+            BigDecimal paid = payments.stream()
+                    .filter(p -> p.getStatus() != null && 
+                            ("PAID".equalsIgnoreCase(p.getStatus()) || "SUCCESS".equalsIgnoreCase(p.getStatus()) || "COMPLETED".equalsIgnoreCase(p.getStatus())))
                     .map(p -> p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO)
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
 
@@ -947,6 +1173,11 @@ public class LeadPaymentService {
             return "DUE";
         }
 
+        // If the status is already REJECTED and no payments are confirmed, keep it REJECTED
+        if ("REJECTED".equalsIgnoreCase(fee.getPaymentStatus()) && (fee.getPaidInstallments() == null || fee.getPaidInstallments() == 0)) {
+            return "REJECTED";
+        }
+
         BigDecimal balance = fee.getBalanceAmount() != null
                 ? fee.getBalanceAmount()
                 : BigDecimal.ZERO;
@@ -956,13 +1187,13 @@ public class LeadPaymentService {
                 : 0;
 
         if (balance.compareTo(BigDecimal.ZERO) <= 0) {
-            return "PAID";
+            return "FULL_PAID";
         }
 
-        if (paidInstallments <= 1) {
+        if (paidInstallments == 0) {
             return "PRE_PAYMENT";
         }
 
-        return "POST_PAYMENT_" + (paidInstallments - 1);
+        return "PAID_INSTALLMENT_" + paidInstallments;
     }
 }

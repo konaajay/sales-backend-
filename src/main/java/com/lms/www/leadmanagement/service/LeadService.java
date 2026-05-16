@@ -520,9 +520,20 @@ public class LeadService {
     private LeadDTO convertToDTO(Lead lead) {
         LeadDTO dto = LeadDTO.fromEntity(lead);
         
-        // Fetch granular payment progress if it exists
+        // Priority 1: Check for manual payments awaiting manager verification
+        boolean hasPendingApproval = paymentRepository.existsByLeadIdAndStatus(lead.getId(), Payment.Status.PENDING_APPROVAL);
+        if (hasPendingApproval) {
+            dto.setPaymentStatus("PENDING_APPROVAL");
+        }
+
+        // Priority 2: Fetch granular payment progress if fee structure exists
         studentFeeRepository.findByLeadId(lead.getId()).ifPresent(fee -> {
-            dto.setPaymentStatus(fee.getPaymentStatus());
+            // Only use fee status if no manual payment is pending approval
+            if (dto.getPaymentStatus() == null) {
+                if (fee.getPaymentStatus() != null) {
+                    dto.setPaymentStatus(fee.getPaymentStatus());
+                }
+            }
             dto.setTotalAmount(fee.getTotalAmount());
             dto.setPaidAmount(fee.getPaidAmount());
             dto.setBalanceAmount(fee.getBalanceAmount());

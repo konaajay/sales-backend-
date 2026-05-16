@@ -19,7 +19,9 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     @Query("SELECT p FROM Payment p WHERE p.paymentGatewayId = :paymentGatewayId")
     Optional<Payment> findByPaymentGatewayIdWithLock(@Param("paymentGatewayId") String paymentGatewayId);
 
-    Optional<Payment> findByPaymentGatewayId(String paymentGatewayId);
+    Optional<Payment> findTopByPaymentGatewayIdOrderByCreatedAtDesc(String paymentGatewayId);
+    boolean existsByPaymentGatewayId(String paymentGatewayId);
+    boolean existsByPaymentGatewayIdAndStatusNot(String paymentGatewayId, Payment.Status status);
 
     List<Payment> findByLeadIdIn(List<Long> leadIds);
     List<Payment> findByLeadId(Long leadId);
@@ -29,6 +31,7 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     List<Payment> findAllByStatus(Payment.Status status);
     
     List<Payment> findByLeadIdAndStatus(Long leadId, Payment.Status status);
+    boolean existsByLeadIdAndStatus(Long leadId, Payment.Status status);
     
     void deleteByLeadIdAndStatusAndPaymentType(Long leadId, Payment.Status status, String paymentType);
     void deleteByLeadIdAndStatusAndPaymentTypeIn(Long leadId, Payment.Status status, List<String> paymentTypes);

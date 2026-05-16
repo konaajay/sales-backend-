@@ -90,10 +90,18 @@
         </dependency>
 
         <!-- Environment Variables Handler -->
+        <!-- Environment Variables Handler -->
         <dependency>
             <groupId>me.paulschwarz</groupId>
             <artifactId>spring-dotenv</artifactId>
             <version>4.0.0</version>
+        </dependency>
+
+        <!-- Tesseract OCR -->
+        <dependency>
+            <groupId>net.sourceforge.tess4j</groupId>
+            <artifactId>tess4j</artifactId>
+            <version>5.10.0</version>
         </dependency>
     </dependencies>
 

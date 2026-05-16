@@ -119,12 +119,12 @@ public class SecurityService {
 
     public boolean isManager(User user) {
         String role = getRole(user);
-        return role.equals("MANAGER") || role.equals("MGR");
+        return role.contains("MANAGER") || role.contains("MGR");
     }
 
     public boolean isTeamLeader(User user) {
         String role = getRole(user);
-        return role.equals("TEAMLEADER") || role.equals("TL") || role.equals("TEAMLEAD") || role.equals("TEAMLEAS");
+        return role.contains("TEAMLEADER") || role.contains("TL") || role.contains("TEAMLEAD") || role.contains("TEAMLEAS");
     }
 
     public boolean isRoot(User user) {

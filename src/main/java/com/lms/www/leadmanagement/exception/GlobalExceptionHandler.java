@@ -36,6 +36,13 @@ public class GlobalExceptionHandler {
         }
         return ResponseEntity.status(401).body(error);
     }
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<Map<String, String>> handleAccessDeniedException(org.springframework.security.access.AccessDeniedException ex) {
+        Map<String, String> error = new HashMap<>();
+        error.put("message", "Security Protocol: Unauthorized Access. " + ex.getMessage());
+        error.put("error", "ACCESS_DENIED");
+        return ResponseEntity.status(403).body(error);
+    }
 
 
     @ExceptionHandler(SecurityViolationException.class)
