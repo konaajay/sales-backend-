@@ -880,7 +880,16 @@ public class LeadPaymentService {
                     log.info(">>> Saved manual installment: ID={}, Amount={}, DueDate={}", savedInst.getId(), savedInst.getAmount(), savedInst.getDueDate());
                     
                     if (dueDate != null) {
+                        log.info(">>> Creating EMI Task for future installment: {}", dueDate);
                         createLeadTask(lead, dueDate, "EMI Collection - Planned", "EMI_COLLECTION");
+                        
+                        // Also update lead's main follow-up if this is the earliest future date
+                        if (lead.getFollowUpDate() == null || dueDate.isBefore(lead.getFollowUpDate())) {
+                            lead.setFollowUpDate(dueDate);
+                            lead.setFollowUpRequired(true);
+                            lead.setFollowUpType("EMI_COLLECTION");
+                            leadRepository.save(lead);
+                        }
                     }
                 } catch (Exception e) {
                     log.error(">>> Error processing manual installment: {}", e.getMessage(), e);
@@ -890,11 +899,27 @@ public class LeadPaymentService {
             log.info(">>> No installments list found in manual payment data for lead {}. Received type: {}", leadId, installmentsObj != null ? installmentsObj.getClass().getName() : "null");
         }
         
+        // Extract nextDueDate from installments or explicit field
+        LocalDateTime nextDueToUse = null;
+        Object nextDueObj = data.get("nextDueDate");
+        if (nextDueObj != null && !nextDueObj.toString().isBlank()) {
+            nextDueToUse = LocalDateTime.parse(nextDueObj.toString().contains("T") ? nextDueObj.toString() : nextDueObj.toString() + "T10:00:00");
+        }
+        
+        if (nextDueToUse == null && installmentsObj instanceof List) {
+            List<Map<String, Object>> instList = (List<Map<String, Object>>) installmentsObj;
+            nextDueToUse = instList.stream()
+                .map(m -> (String) m.get("dueDate"))
+                .filter(Objects::nonNull)
+                .filter(s -> !s.isBlank())
+                .map(s -> LocalDateTime.parse(s.contains("T") ? s : s + "T10:00:00"))
+                .min(Comparator.naturalOrder())
+                .orElse(null);
+        }
+
         // Sync Fee structure (create it if it doesn't exist)
-        // If not manager, paidAmount added is ZERO (it's pending approval)
         BigDecimal paidToSync = (targetStatus == Payment.Status.PAID) ? amount : BigDecimal.ZERO;
-        log.info(">>> Syncing StudentFee for lead {}. PaidThisTime={}", leadId, paidToSync);
-        syncStudentFee(lead, paidToSync, totalAmount, discount, null);
+        syncStudentFee(lead, paidToSync, totalAmount, discount, nextDueToUse);
 
         // Only convert lead if immediately PAID by manager/admin
         if (targetStatus == Payment.Status.PAID) {
