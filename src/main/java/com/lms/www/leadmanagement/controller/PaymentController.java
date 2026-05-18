@@ -44,6 +44,11 @@ public class PaymentController {
         return ResponseEntity.ok(leadPaymentService.generateInvoice(leadId));
     }
 
+    @GetMapping("/api/payments/{paymentId}/invoice")
+    public ResponseEntity<PaymentDTO> getInvoiceByPaymentId(@PathVariable Long paymentId) {
+        return ResponseEntity.ok(leadPaymentService.generateInvoiceByPaymentId(paymentId));
+    }
+
     @PutMapping("/api/payments/{id}/status")
     @PreAuthorize("hasAnyAuthority('UPDATE_LEAD_STATUS', 'ROLE_ADMIN', 'ROLE_MANAGER', 'ADMIN', 'MANAGER')")
     public ResponseEntity<Void> updatePaymentStatus(

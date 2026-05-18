@@ -475,6 +475,13 @@ public class LeadPaymentService {
     }
 
     @Transactional(readOnly = true)
+    public PaymentDTO generateInvoiceByPaymentId(Long paymentId) {
+        Payment p = paymentRepository.findById(paymentId)
+                .orElseThrow(() -> new ResourceNotFoundException("Payment not found: " + paymentId));
+        return convertToDTO(p);
+    }
+
+    @Transactional(readOnly = true)
     public List<PaymentDTO> getFilteredPaymentHistory(Long managerId, Long userId, Long tlId, Long associateId,
             LocalDateTime start, LocalDateTime end, String status) {
         User requester = securityService.getCurrentUser();
@@ -808,8 +815,27 @@ public class LeadPaymentService {
             payment.setReceiptUrl(receiptUrl);
             payment.setNote(note);
             payment.setUpdatedBy(requester);
+            
+            String businessName = (String) data.get("businessName");
+            String businessAddress = (String) data.get("businessAddress");
+            String businessContact = (String) data.get("businessContact");
+            String businessEmail = (String) data.get("businessEmail");
+            String taxId = (String) data.get("taxId");
+            
+            if (businessName != null) payment.setBusinessName(businessName);
+            if (businessAddress != null) payment.setBusinessAddress(businessAddress);
+            if (businessContact != null) payment.setBusinessContact(businessContact);
+            if (businessEmail != null) payment.setBusinessEmail(businessEmail);
+            if (taxId != null) payment.setTaxId(taxId);
+            
             log.info(">>> Fulfilling existing PENDING installment ID={} for lead {}", payment.getId(), leadId);
         } else {
+            String businessName = data.get("businessName") != null ? (String) data.get("businessName") : "Gyantrix";
+            String businessAddress = data.get("businessAddress") != null ? (String) data.get("businessAddress") : "Pathrika Nagar, Street No:1, HITEC City, Hyderabad - 500081";
+            String businessContact = data.get("businessContact") != null ? (String) data.get("businessContact") : "+91 9247551330";
+            String businessEmail = data.get("businessEmail") != null ? (String) data.get("businessEmail") : "support@gyantrixacademy.com";
+            String taxId = data.get("taxId") != null ? (String) data.get("taxId") : "GSTIN: 36AAACG1234F1Z5";
+
             // Create new payment record
             payment = Payment.builder()
                 .leadId(leadId)
@@ -822,6 +848,11 @@ public class LeadPaymentService {
                 .receiptUrl(receiptUrl)
                 .note(note)
                 .updatedBy(requester)
+                .businessName(businessName)
+                .businessAddress(businessAddress)
+                .businessContact(businessContact)
+                .businessEmail(businessEmail)
+                .taxId(taxId)
                 .build();
         }
 
@@ -866,6 +897,12 @@ public class LeadPaymentService {
                         }
                     }
 
+                    String instBusinessName = instData.get("businessName") != null ? (String) instData.get("businessName") : "Gyantrix";
+                    String instBusinessAddress = instData.get("businessAddress") != null ? (String) instData.get("businessAddress") : "Pathrika Nagar, Street No:1, HITEC City, Hyderabad - 500081";
+                    String instBusinessContact = instData.get("businessContact") != null ? (String) instData.get("businessContact") : "+91 9247551330";
+                    String instBusinessEmail = instData.get("businessEmail") != null ? (String) instData.get("businessEmail") : "support@gyantrixacademy.com";
+                    String instTaxId = instData.get("taxId") != null ? (String) instData.get("taxId") : "GSTIN: 36AAACG1234F1Z5";
+
                     Payment inst = Payment.builder()
                             .leadId(leadId)
                             .amount(instAmount)
@@ -875,6 +912,11 @@ public class LeadPaymentService {
                             .dueDate(dueDate)
                             .paymentMethod(paymentMethod)
                             .updatedBy(requester)
+                            .businessName(instBusinessName)
+                            .businessAddress(instBusinessAddress)
+                            .businessContact(instBusinessContact)
+                            .businessEmail(instBusinessEmail)
+                            .taxId(instTaxId)
                             .build();
                     Payment savedInst = paymentRepository.saveAndFlush(inst);
                     log.info(">>> Saved manual installment: ID={}, Amount={}, DueDate={}", savedInst.getId(), savedInst.getAmount(), savedInst.getDueDate());

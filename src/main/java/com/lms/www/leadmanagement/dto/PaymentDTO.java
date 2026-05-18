@@ -14,6 +14,8 @@ public class PaymentDTO {
     private Long leadId;
     private String leadName;
     private String leadEmail;
+    private String courseName;
+    private String mobile;
     private BigDecimal amount;
     private BigDecimal totalAmount;
     private java.time.LocalDateTime date;
@@ -58,16 +60,20 @@ public class PaymentDTO {
                 .updatedAt(payment.getUpdatedAt())
                 .updatedById(payment.getUpdatedBy() != null ? payment.getUpdatedBy().getId() : null)
                 
-                // Hardcoded Business Details for Invoice
-                .businessName("Nexus Lead Management")
-                .businessAddress("Techno Park, Hub 7, Bangalore, India")
-                .businessContact("+91 98765 43210")
-                .businessEmail("finance@nexuslms.com")
-                .taxId("GSTIN: 29AABCB1234F1Z5");
+                // Business Details for Invoice
+                .businessName(payment.getBusinessName() != null ? payment.getBusinessName() : "Gyantrix")
+                .businessAddress(payment.getBusinessAddress() != null ? payment.getBusinessAddress() : "Pathrika Nagar, Street No:1, HITEC City, Hyderabad - 500081")
+                .businessContact(payment.getBusinessContact() != null ? payment.getBusinessContact() : "+91 9247551330")
+                .businessEmail(payment.getBusinessEmail() != null ? payment.getBusinessEmail() : "support@gyantrixacademy.com")
+                .taxId(payment.getTaxId() != null ? payment.getTaxId() : "GSTIN: 36AAACG1234F1Z5");
 
         if (lead != null) {
             builder.leadName(lead.getName())
-                   .leadEmail(lead.getEmail());
+                   .leadEmail(lead.getEmail())
+                   .mobile(lead.getMobile());
+            if (lead.getCourse() != null) {
+                builder.courseName(lead.getCourse().getName());
+            }
             if (lead.getAssignedTo() != null) {
                 builder.assignedTlName(lead.getAssignedTo().getName());
             }

@@ -40,6 +40,12 @@ public class Payment {
     private String note;
     private String receiptUrl; // For manual payment screenshots
 
+    private String businessName;
+    private String businessAddress;
+    private String businessContact;
+    private String businessEmail;
+    private String taxId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "updated_by")
     private User updatedBy;

@@ -20,9 +20,20 @@ public class StatusUpdateRequest {
     private BigDecimal discount;
     private List<InstallmentMap> installments;
 
+    private String businessName;
+    private String businessAddress;
+    private String businessContact;
+    private String businessEmail;
+    private String taxId;
+
     @Data
     public static class InstallmentMap {
         private BigDecimal amount;
         private String dueDate;
+        private String businessName;
+        private String businessAddress;
+        private String businessContact;
+        private String businessEmail;
+        private String taxId;
     }
 }
