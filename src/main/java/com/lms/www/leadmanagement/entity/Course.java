@@ -28,6 +28,10 @@ public class Course {
     @Builder.Default
     private BigDecimal minTokenAmount = new BigDecimal("500");
 
+    @Column(nullable = false, columnDefinition = "integer default 4")
+    @Builder.Default
+    private Integer maxInstallments = 4;
+
     private String description;
 
     @Builder.Default

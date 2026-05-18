@@ -124,11 +124,19 @@ public class DashboardStatsService {
                 mappedDistribution.put(p.getStatus().toUpperCase(), p.getCount());
         }
 
-        mappedDistribution.putIfAbsent("NEW", 0L);
+        mappedDistribution.putIfAbsent("OPEN", 0L);
         mappedDistribution.putIfAbsent("CONTACTED", 0L);
         mappedDistribution.putIfAbsent("FOLLOW_UP", mappedDistribution.getOrDefault("FOLLOWUP", 0L) + mappedDistribution.getOrDefault("EMI_FOLLOWUP", 0L));
         mappedDistribution.putIfAbsent("CONVERTED",
                 mappedDistribution.getOrDefault("PAID", 0L) + mappedDistribution.getOrDefault("SUCCESS", 0L));
+        mappedDistribution.put("DNP",
+                mappedDistribution.getOrDefault("DNP", 0L) +
+                mappedDistribution.getOrDefault("SWITCH_OFF", 0L) +
+                mappedDistribution.getOrDefault("SWITCHED_OFF", 0L) +
+                mappedDistribution.getOrDefault("OUT_OF_COVERAGE", 0L) +
+                mappedDistribution.getOrDefault("OUT_OF_COVERAGE_AREA", 0L) +
+                mappedDistribution.getOrDefault("WRONG_NUMBER", 0L) +
+                mappedDistribution.getOrDefault("NOT_RESPONDING", 0L));
 
         return DashboardSummaryDTO.builder().stats(stats).trend(trend).statusDistribution(mappedDistribution)
                 .performance(stats.getPerformance()).build();
@@ -196,7 +204,7 @@ public class DashboardStatsService {
 
         List<String> dbActive = pipelineStageRepository.findByActiveTrueOrderByOrderIndexAsc().stream()
                 .map(PipelineStage::getStatusValue).collect(Collectors.toList());
-        final List<String> activeStatuses = dbActive.isEmpty() ? List.of("NEW", "CONTACTED", "FOLLOW_UP") : dbActive;
+        final List<String> activeStatuses = dbActive.isEmpty() ? List.of("OPEN", "CONTACTED", "FOLLOW_UP") : dbActive;
 
         CompletableFuture<Long> activeLoadFuture = safeAsync(
                 () -> isGlobalAdmin ? leadRepository.countByCreatedAtBetween(start, end)
@@ -360,13 +368,14 @@ public class DashboardStatsService {
                 : leadRepository.getSummaryStats(userIdList, start, end);
         Map<String, Long> mappedDistribution = new HashMap<>();
         if (statusDistribution != null) {
-            mappedDistribution.put("NEW", asLong(statusDistribution.get("newCount")));
+            mappedDistribution.put("OPEN", asLong(statusDistribution.get("newCount")));
             mappedDistribution.put("CONTACTED", asLong(statusDistribution.get("contactedCount")));
             mappedDistribution.put("INTERESTED", asLong(statusDistribution.get("interestedCount")));
             mappedDistribution.put("FOLLOW_UP", asLong(statusDistribution.get("followUpCount")));
             mappedDistribution.put("CONVERTED", asLong(statusDistribution.get("convertedCount")));
             mappedDistribution.put("LOST", asLong(statusDistribution.get("lostCount")));
             mappedDistribution.put("REJECTED", asLong(statusDistribution.get("rejectedCount")));
+            mappedDistribution.put("DNP", asLong(statusDistribution.get("dnpCount")));
         }
 
         Map<String, Map<String, Object>> trendMap = new TreeMap<>();
@@ -483,6 +492,12 @@ public class DashboardStatsService {
                     userAbsents = Math.max(0, totalExpectedDays - userPresents);
                 }
                 performance.add(MemberPerformanceDTO.builder().userId(uid).username(u.getName()).role(u.getRole() != null ? u.getRole().getName().replace("ROLE_", "") : "USER").targetAmount(userTarget).monthlyRevenue(revenueMap.getOrDefault(uid, BigDecimal.ZERO)).presentCount(userPresents).lateCount(userLates).absentCount(userAbsents).build());
+            }
+
+            for (MemberPerformanceDTO mp : performance) {
+                totalPresentCount += mp.getPresentCount();
+                totalLateCount += mp.getLateCount();
+                totalAbsentCount += mp.getAbsentCount();
             }
         }
 

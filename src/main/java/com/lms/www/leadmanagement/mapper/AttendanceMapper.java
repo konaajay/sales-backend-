@@ -122,6 +122,9 @@ public class AttendanceMapper {
                 .maxAccuracyMeters(p.getMaxAccuracyMeters())
                 .minimumWorkMinutes(p.getMinimumWorkMinutes())
                 .maxIdleMinutes(p.getMaxIdleMinutes())
+                .halfDayMinutes(p.getHalfDayMinutes())
+                .shiftStartTime(p.getShiftStartTime() != null ? p.getShiftStartTime().toString() : null)
+                .shiftEndTime(p.getShiftEndTime() != null ? p.getShiftEndTime().toString() : null)
                 .build();
     }
 }

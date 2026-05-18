@@ -150,6 +150,9 @@ public class AdminAttendanceController {
         if (course.getMinTokenAmount() == null || course.getMinTokenAmount().compareTo(new java.math.BigDecimal("500")) < 0) {
             course.setMinTokenAmount(new java.math.BigDecimal("500"));
         }
+        if (course.getMaxInstallments() == null || course.getMaxInstallments() < 1) {
+            course.setMaxInstallments(4);
+        }
         return ResponseEntity.ok(ApiResponse.success(courseRepository.save(course)));
     }
  
@@ -164,6 +167,7 @@ public class AdminAttendanceController {
             if (courseDetails.getMinTokenAmount() != null && courseDetails.getMinTokenAmount().compareTo(new java.math.BigDecimal("500")) >= 0) {
                 course.setMinTokenAmount(courseDetails.getMinTokenAmount());
             }
+            course.setMaxInstallments(courseDetails.getMaxInstallments() != null ? courseDetails.getMaxInstallments() : 4);
             return ResponseEntity.ok(ApiResponse.success(courseRepository.save(course)));
         }).orElse(ResponseEntity.notFound().build());
     }

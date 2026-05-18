@@ -53,5 +53,8 @@ public class AttendancePolicyDTO {
     private Integer maxIdleMinutes;
 
     private Integer halfDayMinutes;
+
+    private String shiftStartTime;
+    private String shiftEndTime;
 }
 

@@ -82,4 +82,16 @@ public class MailService {
         String body = templateEngine.process("emails/payment-reminder", context);
         sendEmail(to, "Payment Reminder | Gyantric CRM", body);
     }
+
+    @Async
+    public void sendAdmissionSuccess(String to, String name, String invoiceId, java.math.BigDecimal amount, String method) {
+        Context context = new Context();
+        context.setVariable("name", name);
+        context.setVariable("invoiceId", invoiceId);
+        context.setVariable("amount", amount);
+        context.setVariable("method", method != null ? method : "MANUAL");
+
+        String body = templateEngine.process("emails/admission-success", context);
+        sendEmail(to, "Admission Confirmed - Official Invoice #" + invoiceId, body);
+    }
 }

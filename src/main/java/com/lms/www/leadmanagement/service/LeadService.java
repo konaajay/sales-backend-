@@ -133,7 +133,7 @@ public class LeadService {
         
         // AUTO-ASSIGNMENT PROTOCOL: If an Associate adds a lead, they OWN it immediately.
         User assignedTo = null;
-        String status = "NEW";
+        String status = "OPEN";
         
         if (creator.getRole().getName().equalsIgnoreCase("ASSOCIATE")) {
             assignedTo = creator;
@@ -167,8 +167,8 @@ public class LeadService {
                 securityService.validateAccess(user, lead.getCreatedBy().getId());
             }
         }
-        String currentStatus = lead.getStatus() != null ? lead.getStatus().trim().toUpperCase() : "NEW";
-        String requestedStatus = request.getStatus() != null ? request.getStatus().trim().toUpperCase() : "NEW";
+        String currentStatus = lead.getStatus() != null ? lead.getStatus().trim().toUpperCase() : "OPEN";
+        String requestedStatus = request.getStatus() != null ? request.getStatus().trim().toUpperCase() : "OPEN";
 
         if (List.of("PAID", "SUCCESS", "EMI", "CONVERTED", "EMI_FOLLOWUP").contains(currentStatus)) {
             // Allow transitions strictly for payment tracking
@@ -182,7 +182,7 @@ public class LeadService {
         }
 
         String status = request.getStatus();
-        if (status == null) status = "NEW";
+        if (status == null) status = "OPEN";
         
         if ("CONVERTED".equalsIgnoreCase(status)) {
             throw new InvalidRequestException("Manual conversion restricted. Leads can only be marked as CONVERTED via successful payment processing.");
@@ -254,6 +254,7 @@ public class LeadService {
                 List.of("EMI_INSTALLMENT", "INSTALLMENT")
             );
 
+            boolean isFirstSkipped = false;
             for (StatusUpdateRequest.InstallmentMap inst : request.getInstallments()) {
                 LocalDateTime due = null;
                 try {
@@ -263,6 +264,20 @@ public class LeadService {
                 }
 
                 if (due != null && inst.getAmount() != null) {
+                    // CRITICAL DUP CHECK: Skip creating a PENDING record if:
+                    // 1. It is due today or in the past (as that is the one being paid now).
+                    // 2. Or if its amount matches the payment currently being recorded and we haven't skipped yet.
+                    LocalDateTime todayStart = java.time.LocalDate.now().atStartOfDay();
+                    if (due.isBefore(todayStart.plusDays(1))) {
+                        log.info(">>> Skipping PENDING record for installment due today/past: ₹{} due {}", inst.getAmount(), due);
+                        continue;
+                    }
+                    if (!isFirstSkipped && paid.compareTo(BigDecimal.ZERO) > 0 && inst.getAmount().compareTo(paid) == 0) {
+                        isFirstSkipped = true;
+                        log.info(">>> Skipping PENDING record matching current payment amount: ₹{}", inst.getAmount());
+                        continue;
+                    }
+
                     paymentRepository.save(Payment.builder()
                             .leadId(lead.getId())
                             .amount(inst.getAmount())
@@ -346,7 +361,7 @@ public class LeadService {
         
         if (!skipAudit && hasContent) {
             // Only record in audit log if there's actual content
-            recordAuditLog(lead.getId(), creator, "NOTE", "NEW", content, "NOTE_ADDED");
+            recordAuditLog(lead.getId(), creator, "NOTE", "OPEN", content, "NOTE_ADDED");
         }
     }
 
@@ -470,7 +485,7 @@ public class LeadService {
             log.info("[ASSIGN] User {} (isTL: {}) attempting to assign Lead #{} to User {}. currentCount: {}", 
                 requester.getEmail(), isTL, leadId, userId, lead.getReassignmentCount());
 
-            if (isChanging && isTL && !"NEW".equalsIgnoreCase(lead.getStatus())) {
+            if (isChanging && isTL && !"OPEN".equalsIgnoreCase(lead.getStatus())) {
                 int currentCount = lead.getReassignmentCount() != null ? lead.getReassignmentCount() : 0;
                 log.info("[COUNT-CHECK] Lead #{} current actions: {}", leadId, currentCount);
                 if (currentCount >= 2) {
@@ -483,10 +498,10 @@ public class LeadService {
 
             lead.setAssignedTo(target);
             recordAuditLog(lead.getId(), requester, "ASSIGNMENT", oldVal, target.getName(), "ASSIGNMENT_CHANGE");
-            // Reset status to NEW upon assignment unless it's already finalized
-            String currentStatus = lead.getStatus() != null ? lead.getStatus() : "NEW";
+            // Reset status to OPEN upon assignment unless it's already finalized
+            String currentStatus = lead.getStatus() != null ? lead.getStatus() : "OPEN";
             if (!List.of("PAID", "SUCCESS", "EMI", "CONVERTED").contains(currentStatus.toUpperCase())) {
-                lead.setStatus("NEW");
+                lead.setStatus("OPEN");
             }
         }
         return convertToDTO(leadRepository.save(lead));
@@ -509,7 +524,7 @@ public class LeadService {
             boolean isChanging = (finalTarget == null && l.getAssignedTo() != null) || 
                                (finalTarget != null && (l.getAssignedTo() == null || !l.getAssignedTo().getId().equals(finalTarget.getId())));
 
-            if (isChanging && securityService.isTeamLeader(requester) && !"NEW".equalsIgnoreCase(l.getStatus())) {
+            if (isChanging && securityService.isTeamLeader(requester) && !"OPEN".equalsIgnoreCase(l.getStatus())) {
                 int currentCount = l.getReassignmentCount() != null ? l.getReassignmentCount() : 0;
                 if (currentCount >= 2) {
                     throw new InvalidRequestException("Bulk action failed for Lead #" + l.getId() + ": Maximum transfer limit reached (1 assignment + 1 reassignment).");
@@ -518,10 +533,10 @@ public class LeadService {
             }
 
             l.setAssignedTo(finalTarget);
-            // Reset status to NEW upon bulk assignment unless it's already finalized
-            String currentStatus = l.getStatus() != null ? l.getStatus() : "NEW";
+            // Reset status to OPEN upon bulk assignment unless it's already finalized
+            String currentStatus = l.getStatus() != null ? l.getStatus() : "OPEN";
             if (!List.of("PAID", "SUCCESS", "EMI", "CONVERTED").contains(currentStatus.toUpperCase())) {
-                l.setStatus("NEW");
+                l.setStatus("OPEN");
             }
         });
         return leadRepository.saveAll(leads).stream().map(l -> convertToDTO(l)).collect(Collectors.toList());
@@ -672,7 +687,7 @@ public class LeadService {
     public LeadDTO updateNote(Long id, String note) {
         Lead lead = leadRepository.findById(id).orElseThrow();
         User user = securityService.getCurrentUser();
-        saveNote(lead, user, note, lead.getStatus() != null ? lead.getStatus() : "NEW", false);
+        saveNote(lead, user, note, lead.getStatus() != null ? lead.getStatus() : "OPEN", false);
         return convertToDTO(lead);
     }
 

@@ -142,4 +142,25 @@ public class LeadTaskService {
     public void deleteTask(Long id) {
         leadTaskRepository.deleteById(id);
     }
+
+    @Transactional
+    public void createLeadTask(Lead lead, LocalDateTime dueDate, String title, String type) {
+        if (dueDate == null)
+            return;
+        LeadTask task = LeadTask.builder()
+                .lead(lead)
+                .title(title)
+                .dueDate(dueDate)
+                .status(LeadTask.TaskStatus.PENDING)
+                .taskType(type)
+                .assignedTo(lead.getAssignedTo())
+                .build();
+        leadTaskRepository.save(task);
+
+        if (lead.getFollowUpDate() == null || dueDate.isBefore(lead.getFollowUpDate())
+                || dueDate.toLocalDate().isEqual(java.time.LocalDate.now())) {
+            lead.setFollowUpDate(dueDate);
+            leadRepository.save(lead);
+        }
+    }
 }

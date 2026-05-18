@@ -90,7 +90,7 @@ public class PaymentController {
         
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         mapper.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule());
-        java.util.Map<String, Object> payload = mapper.readValue(dataJson, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+        com.lms.www.leadmanagement.dto.ManualPaymentRequestDTO payload = mapper.readValue(dataJson, com.lms.www.leadmanagement.dto.ManualPaymentRequestDTO.class);
         
         String receiptUrl = null;
         if (receipt != null && !receipt.isEmpty()) {

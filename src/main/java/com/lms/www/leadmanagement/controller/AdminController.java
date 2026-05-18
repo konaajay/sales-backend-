@@ -263,6 +263,15 @@ public class AdminController {
         return ResponseEntity.ok(adminService.bulkAssignLeads(leadIds, tlId));
     }
 
+    @Autowired
+    private com.lms.www.leadmanagement.service.CsvLeadImportService csvLeadImportService;
+
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PostMapping("/upload-old-leads")
+    public ResponseEntity<com.lms.www.leadmanagement.dto.LeadUploadResponse> uploadOldLeads(@RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        return ResponseEntity.ok(csvLeadImportService.importOldLeadsCsv(file));
+    }
+
     @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
     @GetMapping("/shifts")
     public ResponseEntity<List<com.lms.www.leadmanagement.entity.AttendanceShift>> getAllShifts() {

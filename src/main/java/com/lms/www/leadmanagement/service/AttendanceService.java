@@ -250,8 +250,23 @@ public class AttendanceService {
         daily.setLateMinutes(session.getLateMinutes());
         
         long workMins = session.getTotalWorkSeconds() / 60;
-        if (workMins >= 480) daily.setStatus("PRESENT");
-        else if (workMins >= 240) daily.setStatus("HALF_DAY");
+        User user = session.getUser();
+        AttendanceShift shift = user.getShift();
+        AttendancePolicy policy = policyRepository.findByOfficeId(session.getOffice().getId()).orElse(null);
+
+        int minFullDay = 480;
+        int minHalfDay = 240;
+
+        if (shift != null) {
+            minFullDay = shift.getMinFullDayMinutes();
+            minHalfDay = shift.getMinHalfDayMinutes();
+        } else if (policy != null) {
+            minFullDay = policy.getMinimumWorkMinutes() != null ? policy.getMinimumWorkMinutes() : 480;
+            minHalfDay = policy.getHalfDayMinutes() != null ? policy.getHalfDayMinutes() : 240;
+        }
+
+        if (workMins >= minFullDay) daily.setStatus("PRESENT");
+        else if (workMins >= minHalfDay) daily.setStatus("HALF_DAY");
         else daily.setStatus("SHORT_DAY");
         
         dailyRepository.save(daily);
@@ -324,18 +339,39 @@ public class AttendanceService {
     }
 
     private AttendanceDTO mapDailyToDTO(AttendanceDaily d, User user, LocalDate date) {
+        OfficeLocation office = user.getAssignedOffice();
+        if (office == null) {
+            office = officeRepository.findAll().stream().findFirst().orElse(null);
+        }
         return AttendanceDTO.builder()
                 .userId(user.getId()).userName(user.getName())
                 .date(date).checkInTime(d.getLoginTime()).checkOutTime(d.getLogoutTime())
                 .status(d.getStatus()).totalWorkMinutes(d.getTotalWorkMinutes())
                 .late(d.isLate()).lateMinutes(d.getLateMinutes())
+                .officeLat(office != null ? office.getLatitude() : null)
+                .officeLng(office != null ? office.getLongitude() : null)
+                .officeRadius(office != null ? office.getRadius() : 30.0)
+                .officeName(office != null ? office.getName() : null)
+                .isWfhApproved(isWfhApproved(user.getId()))
+                .wfhStatus(isWfhApproved(user.getId()) ? "APPROVED" : "NONE")
                 .build();
     }
 
     private AttendanceDTO createAbsentDTO(User user, LocalDate date) {
+        OfficeLocation office = user.getAssignedOffice();
+        if (office == null) {
+            office = officeRepository.findAll().stream().findFirst().orElse(null);
+        }
         return AttendanceDTO.builder()
                 .userId(user.getId()).userName(user.getName())
-                .date(date).status("ABSENT").build();
+                .date(date).status("ABSENT")
+                .officeLat(office != null ? office.getLatitude() : null)
+                .officeLng(office != null ? office.getLongitude() : null)
+                .officeRadius(office != null ? office.getRadius() : 30.0)
+                .officeName(office != null ? office.getName() : null)
+                .isWfhApproved(isWfhApproved(user.getId()))
+                .wfhStatus(isWfhApproved(user.getId()) ? "APPROVED" : "NONE")
+                .build();
     }
 
     private long calculateBreakOverlap(LocalTime start, LocalTime end, AttendancePolicy policy, AttendanceShift shift) {

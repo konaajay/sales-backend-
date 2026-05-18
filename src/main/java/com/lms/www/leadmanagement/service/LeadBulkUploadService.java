@@ -150,7 +150,7 @@ public class LeadBulkUploadService {
                                 .email(email == null || email.isEmpty() ? null : email)
                                 .mobile(mobile)
                                 .college(college == null || college.isEmpty() ? null : college)
-                                .status(finalAssignee != null ? "WORKING" : "NEW")
+                                .status(finalAssignee != null ? "WORKING" : "OPEN")
                                 .createdBy(creator)
                                 .assignedTo(finalAssignee)
                                 .build();

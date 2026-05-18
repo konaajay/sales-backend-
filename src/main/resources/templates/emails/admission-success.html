@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+</head>
+<body style="font-family: Arial, sans-serif; margin: 0; padding: 0; background-color: #f4f7fa;">
+    <div style="max-width: 600px; margin: 20px auto; background: #ffffff; color: #1e293b; line-height: 1.7; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+        <div style="background-color: #10b981; color: white; padding: 25px; text-align: center;">
+            <h2 style="margin: 0; font-size: 20px; letter-spacing: 1px; text-transform: uppercase;">ADMISSION CONFIRMED</h2>
+            <p style="margin: 5px 0 0; opacity: 0.9; font-size: 14px;">Official Payment Receipt</p>
+        </div>
+        <div style="padding: 30px; color: #1e293b;">
+            <p>Dear <strong th:text="${name}">Student</strong>,</p>
+            <p>We are delighted to confirm that your payment has been successfully verified. Your admission is now official.</p>
+            
+            <div style="background-color: #f8fafc; border: 1px solid #f1f5f9; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                    <tr>
+                        <td style="padding: 8px 0; color: #64748b;">Invoice ID:</td>
+                        <td style="padding: 8px 0; text-align: right; font-weight: bold; color: #0f172a;" th:text="${invoiceId}">#000000</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; color: #64748b;">Amount Paid:</td>
+                        <td style="padding: 8px 0; text-align: right; color: #10b981; font-weight: bold;" th:text="${'₹' + amount}">₹0</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; color: #64748b;">Method:</td>
+                        <td style="padding: 8px 0; text-align: right; color: #0f172a;" th:text="${method}">MANUAL</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 8px 0; color: #64748b;">Status:</td>
+                        <td style="padding: 8px 0; text-align: right; color: #10b981; font-weight: bold;">SUCCESSFUL</td>
+                    </tr>
+                </table>
+            </div>
+            
+            <p>Your admission is confirmed. Our team will contact you shortly to discuss the next steps.</p>
+            
+            <p style="margin-top: 40px; font-size: 14px; color: #64748b;">
+                Best Regards,<br/>
+                <strong>The Admissions Team</strong>
+            </p>
+        </div>
+        <div style="background-color: #f8fafc; color: #94a3b8; padding: 15px; text-align: center; font-size: 11px; border-top: 1px solid #f1f5f9;">
+            This is a system-generated invoice for your transaction. No signature required.
+        </div>
+    </div>
+</body>
+</html>

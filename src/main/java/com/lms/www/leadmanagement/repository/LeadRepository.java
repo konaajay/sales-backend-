@@ -137,11 +137,12 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
 
     @Query("SELECT new map(" +
             "count(l) as total, " +
-            "sum(case when UPPER(l.status) = 'NEW' then 1 else 0 end) as newCount, " +
+            "sum(case when UPPER(l.status) = 'OPEN' then 1 else 0 end) as newCount, " +
             "sum(case when UPPER(l.status) = 'CONTACTED' then 1 else 0 end) as contactedCount, " +
             "sum(case when UPPER(l.status) IN ('INTERESTED', 'UNDER_REVIEW') then 1 else 0 end) as interestedCount, " +
             "sum(case when UPPER(l.status) IN ('FOLLOW_UP', 'EMI_FOLLOWUP') then 1 else 0 end) as followUpCount, " +
             "sum(case when UPPER(l.status) IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as convertedCount, " +
+            "sum(case when UPPER(l.status) IN ('DNP', 'SWITCH_OFF', 'SWITCHED_OFF', 'OUT_OF_COVERAGE', 'OUT_OF_COVERAGE_AREA', 'WRONG_NUMBER', 'NOT_RESPONDING') then 1 else 0 end) as dnpCount, " +
             "sum(case when UPPER(l.status) = 'REJECTED' then 1 else 0 end) as rejectedCount, " +
             "sum(case when UPPER(l.status) = 'REFUND' then 1 else 0 end) as refundCount, " +
             "sum(case when UPPER(l.status) IN ('LOST', 'NOT_INTERESTED') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as lostCount) " +
@@ -155,11 +156,12 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
 
     @Query("SELECT new map(" +
             "count(l) as total, " +
-            "sum(case when UPPER(l.status) = 'NEW' then 1 else 0 end) as newCount, " +
+            "sum(case when UPPER(l.status) = 'OPEN' then 1 else 0 end) as newCount, " +
             "sum(case when UPPER(l.status) = 'CONTACTED' then 1 else 0 end) as contactedCount, " +
             "sum(case when UPPER(l.status) IN ('INTERESTED', 'UNDER_REVIEW') then 1 else 0 end) as interestedCount, " +
             "sum(case when UPPER(l.status) IN ('FOLLOW_UP', 'EMI_FOLLOWUP') then 1 else 0 end) as followUpCount, " +
             "sum(case when UPPER(l.status) IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as convertedCount, " +
+            "sum(case when UPPER(l.status) IN ('DNP', 'SWITCH_OFF', 'SWITCHED_OFF', 'OUT_OF_COVERAGE', 'OUT_OF_COVERAGE_AREA', 'WRONG_NUMBER', 'NOT_RESPONDING') then 1 else 0 end) as dnpCount, " +
             "sum(case when UPPER(l.status) = 'REJECTED' then 1 else 0 end) as rejectedCount, " +
             "sum(case when UPPER(l.status) = 'REFUND' then 1 else 0 end) as refundCount, " +
             "sum(case when UPPER(l.status) IN ('LOST', 'NOT_INTERESTED') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as lostCount) " +
@@ -171,11 +173,12 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
 
     @Query("SELECT new map(" +
             "count(l) as total, " +
-            "sum(case when UPPER(l.status) = 'NEW' then 1 else 0 end) as newCount, " +
+            "sum(case when UPPER(l.status) = 'OPEN' then 1 else 0 end) as newCount, " +
             "sum(case when UPPER(l.status) = 'CONTACTED' then 1 else 0 end) as contactedCount, " +
             "sum(case when UPPER(l.status) IN ('INTERESTED', 'UNDER_REVIEW') then 1 else 0 end) as interestedCount, " +
             "sum(case when UPPER(l.status) IN ('FOLLOW_UP', 'EMI_FOLLOWUP') then 1 else 0 end) as followUpCount, " +
             "sum(case when UPPER(l.status) IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as convertedCount, " +
+            "sum(case when UPPER(l.status) IN ('DNP', 'SWITCH_OFF', 'SWITCHED_OFF', 'OUT_OF_COVERAGE', 'OUT_OF_COVERAGE_AREA', 'WRONG_NUMBER', 'NOT_RESPONDING') then 1 else 0 end) as dnpCount, " +
             "sum(case when UPPER(l.status) = 'REJECTED' then 1 else 0 end) as rejectedCount, " +
             "sum(case when UPPER(l.status) = 'REFUND' then 1 else 0 end) as refundCount, " +
             "sum(case when UPPER(l.status) IN ('LOST', 'NOT_INTERESTED') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as lostCount) " +

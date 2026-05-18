@@ -1,7 +1,9 @@
 package com.lms.www.leadmanagement.config;
 
+import com.lms.www.leadmanagement.entity.AttendancePolicy;
 import com.lms.www.leadmanagement.entity.AttendanceShift;
 import com.lms.www.leadmanagement.entity.OfficeLocation;
+import com.lms.www.leadmanagement.repository.AttendancePolicyRepository;
 import com.lms.www.leadmanagement.repository.AttendanceShiftRepository;
 import com.lms.www.leadmanagement.repository.OfficeLocationRepository;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,7 @@ public class DataInitializerConfig implements CommandLineRunner {
 
     private final OfficeLocationRepository officeLocationRepository;
     private final AttendanceShiftRepository attendanceShiftRepository;
+    private final AttendancePolicyRepository attendancePolicyRepository;
 
     @Override
     public void run(String... args) throws Exception {
@@ -47,6 +50,24 @@ public class DataInitializerConfig implements CommandLineRunner {
                         .longBreakEndTime(LocalTime.of(14, 0))
                         .build();
                 attendanceShiftRepository.save(shift);
+            }
+
+            if (attendancePolicyRepository.count() == 0) {
+                log.info("Initializing default policy...");
+                AttendancePolicy policy = AttendancePolicy.builder()
+                        .office(office)
+                        .shortBreakStartTime(LocalTime.of(16, 30))
+                        .shortBreakEndTime(LocalTime.of(17, 0))
+                        .longBreakStartTime(LocalTime.of(13, 0))
+                        .longBreakEndTime(LocalTime.of(14, 0))
+                        .gracePeriodMinutes(15)
+                        .trackingIntervalSec(300)
+                        .maxAccuracyMeters(100)
+                        .minimumWorkMinutes(450)
+                        .halfDayMinutes(225)
+                        .maxIdleMinutes(30)
+                        .build();
+                attendancePolicyRepository.save(policy);
             }
         }
     }

@@ -91,6 +91,8 @@ public class AttendancePolicyService {
         policy.setShortBreakEndTime(parseTime(dto.getShortBreakEndTime(), DEFAULT_SHORT_BREAK_END));
         policy.setLongBreakStartTime(parseTime(dto.getLongBreakStartTime(), DEFAULT_LONG_BREAK_START));
         policy.setLongBreakEndTime(parseTime(dto.getLongBreakEndTime(), DEFAULT_LONG_BREAK_END));
+        policy.setShiftStartTime(parseTime(dto.getShiftStartTime(), LocalTime.of(9, 30)));
+        policy.setShiftEndTime(parseTime(dto.getShiftEndTime(), LocalTime.of(18, 30)));
         policy.setGracePeriodMinutes(dto.getGracePeriodMinutes() != null ? dto.getGracePeriodMinutes() : DEFAULT_GRACE_PERIOD);
         policy.setTrackingIntervalSec(dto.getTrackingIntervalSec() != null ? dto.getTrackingIntervalSec() : DEFAULT_TRACKING_INTERVAL);
         policy.setMaxAccuracyMeters(dto.getMaxAccuracyMeters());
@@ -111,11 +113,14 @@ public class AttendancePolicyService {
         policy.setShortBreakEndTime(parseTime(dto.getShortBreakEndTime(), policy.getShortBreakEndTime()));
         policy.setLongBreakStartTime(parseTime(dto.getLongBreakStartTime(), policy.getLongBreakStartTime()));
         policy.setLongBreakEndTime(parseTime(dto.getLongBreakEndTime(), policy.getLongBreakEndTime()));
+        policy.setShiftStartTime(parseTime(dto.getShiftStartTime(), policy.getShiftStartTime()));
+        policy.setShiftEndTime(parseTime(dto.getShiftEndTime(), policy.getShiftEndTime()));
         
         if (dto.getGracePeriodMinutes() != null) policy.setGracePeriodMinutes(dto.getGracePeriodMinutes());
         if (dto.getTrackingIntervalSec() != null) policy.setTrackingIntervalSec(dto.getTrackingIntervalSec());
         if (dto.getMaxAccuracyMeters() != null) policy.setMaxAccuracyMeters(dto.getMaxAccuracyMeters());
         if (dto.getMinimumWorkMinutes() != null) policy.setMinimumWorkMinutes(dto.getMinimumWorkMinutes());
+        if (dto.getHalfDayMinutes() != null) policy.setHalfDayMinutes(dto.getHalfDayMinutes());
         if (dto.getMaxIdleMinutes() != null) policy.setMaxIdleMinutes(dto.getMaxIdleMinutes());
 
         return attendancePolicyRepository.save(policy);
@@ -132,6 +137,10 @@ public class AttendancePolicyService {
     }
 
     private void validatePolicy(AttendancePolicyDTO dto) {
+        LocalTime shiftStart = parseTime(dto.getShiftStartTime(), LocalTime.of(9, 30));
+        LocalTime shiftEnd = parseTime(dto.getShiftEndTime(), LocalTime.of(18, 30));
+        if (shiftStart.isAfter(shiftEnd)) throw new IllegalArgumentException("Shift start must be before end");
+
         LocalTime sbStart = parseTime(dto.getShortBreakStartTime(), DEFAULT_SHORT_BREAK_START);
         LocalTime sbEnd = parseTime(dto.getShortBreakEndTime(), DEFAULT_SHORT_BREAK_END);
         if (sbStart.isAfter(sbEnd)) throw new IllegalArgumentException("Short break start must be before end");
@@ -139,6 +148,13 @@ public class AttendancePolicyService {
         LocalTime lbStart = parseTime(dto.getLongBreakStartTime(), DEFAULT_LONG_BREAK_START);
         LocalTime lbEnd = parseTime(dto.getLongBreakEndTime(), DEFAULT_LONG_BREAK_END);
         if (lbStart.isAfter(lbEnd)) throw new IllegalArgumentException("Long break start must be before end");
+
+        if (sbStart.isBefore(shiftStart) || sbEnd.isAfter(shiftEnd)) {
+            throw new IllegalArgumentException("Short break must be within shift time");
+        }
+        if (lbStart.isBefore(shiftStart) || lbEnd.isAfter(shiftEnd)) {
+            throw new IllegalArgumentException("Long break must be within shift time");
+        }
 
         // Rule 2: Improved Overlap Check (allows 13:00-13:30 and 13:30-14:00)
         if (sbStart.isBefore(lbEnd) && lbStart.isBefore(sbEnd)) {

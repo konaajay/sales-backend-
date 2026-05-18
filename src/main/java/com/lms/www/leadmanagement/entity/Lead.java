@@ -39,11 +39,15 @@ public class Lead {
 
     @Builder.Default
     @Column(name = "status")
-    private String status = "NEW";
+    private String status = "OPEN";
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigned_to")
     private User assignedTo;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "team_leader")
+    private User teamLeader;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "created_by")
@@ -60,6 +64,14 @@ public class Lead {
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
+    private String importBatchId;
+    private String source;
+    private LocalDateTime importedAt;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "imported_by")
+    private User importedBy;
+
     @Builder.Default
     @Column(name = "reassignment_count", nullable = false)
     private Integer reassignmentCount = 0;
@@ -73,7 +85,7 @@ public class Lead {
         createdAt = LocalDateTime.now();
         updatedAt = LocalDateTime.now();
         if (status == null) {
-            status = "NEW";
+            status = "OPEN";
         }
     }
 
