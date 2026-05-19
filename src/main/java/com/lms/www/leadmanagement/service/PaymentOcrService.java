@@ -114,6 +114,10 @@ public class PaymentOcrService {
             g.drawImage(scaled, 0, 0, null);
             g.dispose();
             
+            // 2.5 Contrast Enhancement (increase contrast, reduce brightness slightly to make text pop)
+            java.awt.image.RescaleOp rescaleOp = new java.awt.image.RescaleOp(1.25f, -20.0f, null);
+            gray = rescaleOp.filter(gray, null);
+            
             // 3. Sharpening filter to enhance text contrast and edges
             float[] sharpenKernel = {
                 0f, -1f, 0f,

@@ -78,10 +78,10 @@ public class PaymentOcrParser {
     }
 
     private static void parsePhonePe(String text, OcrResponseDTO dto) {
-        String utr = findMatch(text, "(?i)(?:UTR|UPI Ref No)[:\\s]*(\\d{12})", 1);
+        String utr = findMatch(text, "(?i)(?:UTR|UPI Ref No|Txn ID|Ref No)[:\\s]*(\\d{12})", 1);
         if (utr != null) dto.setUtrNumber(utr);
         
-        String payer = findMatch(text, "(?i)From[:\\s]+([A-Za-z][A-Za-z\\s\\.]{2,25})(?:\\(|\\n|$)", 1);
+        String payer = findMatch(text, "(?i)(?:From|Paid by|Sender)[:\\s]+([A-Za-z][A-Za-z \\.]{2,30})", 1);
         if (payer != null) {
             String cleaned = cleanPayerName(payer);
             if (cleaned != null) dto.setPayerName(cleaned);
@@ -89,10 +89,10 @@ public class PaymentOcrParser {
     }
 
     private static void parsePaytm(String text, OcrResponseDTO dto) {
-        String utr = findMatch(text, "(?i)(?:UPI Ref No|Ref No|UTR)[:\\s\\.]*(\\d{12})", 1);
+        String utr = findMatch(text, "(?i)(?:UPI Ref No|Ref No|UTR|Txn ID)[:\\s\\.]*(\\d{12})", 1);
         if (utr != null) dto.setUtrNumber(utr);
         
-        String payer = findMatch(text, "(?i)(?:From|Paid by|Sender)[:\\s]+([A-Za-z][A-Za-z\\s\\.]{2,25})", 1);
+        String payer = findMatch(text, "(?i)(?:From|Paid by|Sender|To)[:\\s]+([A-Za-z][A-Za-z \\.]{2,30})", 1);
         if (payer != null) {
             String cleaned = cleanPayerName(payer);
             if (cleaned != null) dto.setPayerName(cleaned);
@@ -100,10 +100,10 @@ public class PaymentOcrParser {
     }
 
     private static void parseGPay(String text, OcrResponseDTO dto) {
-        String utr = findMatch(text, "(?i)(?:UPI transaction ID|UPI Ref No)[:\\s]*(\\d{12})", 1);
+        String utr = findMatch(text, "(?i)(?:UPI transaction ID|UPI Ref No|UTR)[:\\s]*(\\d{12})", 1);
         if (utr != null) dto.setUtrNumber(utr);
         
-        String payer = findMatch(text, "(?i)From[:\\s]+([A-Za-z][A-Za-z\\s\\.]{2,25})(?:\\(|\\n|$)", 1);
+        String payer = findMatch(text, "(?i)(?:From|Paid by|Sender)[:\\s]+([A-Za-z][A-Za-z \\.]{2,30})", 1);
         if (payer != null) {
             String cleaned = cleanPayerName(payer);
             if (cleaned != null) dto.setPayerName(cleaned);
@@ -112,10 +112,10 @@ public class PaymentOcrParser {
 
     private static String extractPayerName(String text) {
         String[] labels = {
-            "Received from", "Paid by", "From", "Sender Name", "Sender", "Banking Name"
+            "Received from", "Paid by", "From", "Sender Name", "Sender", "Banking Name", "Paid to"
         };
         for (String label : labels) {
-            Pattern p = Pattern.compile("(?i)" + Pattern.quote(label) + "[:\\s]+([A-Za-z][A-Za-z\\s\\.]{2,25})");
+            Pattern p = Pattern.compile("(?i)" + Pattern.quote(label) + "[:\\s\\n]+([A-Za-z][A-Za-z \\.]{2,30})");
             Matcher m = p.matcher(text);
             if (m.find()) {
                 String candidate = m.group(1).trim();
@@ -131,82 +131,66 @@ public class PaymentOcrParser {
     private static String cleanPayerName(String name) {
         if (name == null) return null;
         String cleaned = name.trim();
-        cleaned = cleaned.split("(?i)\\b(?:to|txn|transaction|ref|upi|date|id|amount|debit|credit|at|on|from|banking|name)\\b")[0].trim();
+        cleaned = cleaned.split("(?i)\\b(?:to|txn|transaction|ref|upi|date|id|amount|debit|credit|at|on|from|banking|name|rupees|rs|inr)\\b")[0].trim();
         cleaned = cleaned.replaceAll("\\s+", " ");
-        if (cleaned.length() < 2) return null;
+        if (cleaned.length() < 2 || cleaned.matches(".*\\d.*")) return null;
         return cleaned;
     }
 
+    private static boolean isValidAmount(String candidate) {
+        String cleanVal = candidate.replace(",", "");
+        double val;
+        try {
+            val = Double.parseDouble(cleanVal);
+        } catch (NumberFormatException e) {
+            return false;
+        }
+        if (cleanVal.length() < 2 || val < 1.0 || cleanVal.length() >= 10) return false;
+        if (val >= 2020.0 && val <= 2035.0 && !candidate.contains(".")) return false; // Ignore year values completely
+        return true;
+    }
+
     private static String extractAmount(String text) {
+        // Pass 1: Strict currency prefix
+        Pattern strictP = Pattern.compile("(?i)(?:₹|Rs\\.?|INR)\\s*([0-9,]{2,10}(?:\\.\\d{1,2})?)");
+        Matcher strictM = strictP.matcher(text);
+        while (strictM.find()) {
+            String candidate = strictM.group(1).trim();
+            if (isValidAmount(candidate)) return candidate;
+        }
+        
+        // Pass 2: Label based (Received, Paid, Amount, Total)
+        Pattern labelP = Pattern.compile("(?i)(?:Amount|Received|Paid|Total)[:\\s]+(?:₹|Rs\\.?|INR)?\\s*([0-9,]{2,10}(?:\\.\\d{1,2})?)");
+        Matcher labelM = labelP.matcher(text);
+        while (labelM.find()) {
+             String candidate = labelM.group(1).trim();
+             if (isValidAmount(candidate)) return candidate;
+        }
+
+        // Pass 3: Scoring algorithm
         Pattern p = Pattern.compile("([0-9,]+(?:\\.\\d{1,2})?)");
         Matcher m = p.matcher(text);
-        
         String bestAmount = null;
         int highestScore = -100;
         
         while (m.find()) {
             String candidate = m.group(1);
             int start = m.start();
-            
-            String cleanVal = candidate.replace(",", "");
-            double val;
-            try {
-                val = Double.parseDouble(cleanVal);
-            } catch (NumberFormatException e) {
-                continue;
-            }
-            
-            if (cleanVal.length() < 2 || val < 1.0) {
-                continue;
-            }
-            
-            if (cleanVal.length() >= 10) {
-                continue;
-            }
-            
-            if (val >= 2020 && val <= 2035) {
-                continue;
-            }
-            
-            if (isDateOrTimeArtifact(text, start, candidate.length())) {
-                continue;
-            }
+            if (!isValidAmount(candidate)) continue;
+            if (isDateOrTimeArtifact(text, start, candidate.length())) continue;
             
             int score = 0;
             int startPrefix = Math.max(0, start - 15);
-            String prefix = text.substring(startPrefix, start);
-            
+            String prefix = text.substring(startPrefix, start).toLowerCase();
             int endSuffix = Math.min(text.length(), start + candidate.length() + 15);
-            String suffix = text.substring(start + candidate.length(), endSuffix);
+            String suffix = text.substring(start + candidate.length(), endSuffix).toLowerCase();
             
-            if (prefix.matches(".*(?:₹|Rs\\.?|INR)\\s*[\\.\\s]*$")) {
-                score += 100;
-            } else if (prefix.toLowerCase().contains("₹") || prefix.toLowerCase().contains("rs") || prefix.toLowerCase().contains("inr")) {
-                score += 80;
-            }
-            
-            if (prefix.toLowerCase().contains("received") || suffix.toLowerCase().contains("received")) {
-                score += 60;
-            }
-            if (prefix.toLowerCase().contains("paid") || suffix.toLowerCase().contains("paid")) {
-                score += 60;
-            }
-            if (prefix.toLowerCase().contains("amount") || suffix.toLowerCase().contains("amount")) {
-                score += 60;
-            }
-            if (prefix.toLowerCase().contains("sent") || suffix.toLowerCase().contains("sent")) {
-                score += 40;
-            }
-            if (prefix.toLowerCase().contains("total") || suffix.toLowerCase().contains("total")) {
-                score += 40;
-            }
-            
-            if (candidate.contains(".")) {
-                score += 10;
-            }
-            if (candidate.contains(",")) {
-                score += 10;
-            }
+            if (prefix.contains("₹") || prefix.contains("rs") || prefix.contains("inr")) score += 100;
+            if (prefix.contains("received") || suffix.contains("received")) score += 60;
+            if (prefix.contains("paid") || suffix.contains("paid")) score += 60;
+            if (prefix.contains("amount") || suffix.contains("amount")) score += 60;
+            if (prefix.contains("sent") || suffix.contains("sent")) score += 40;
+            if (candidate.contains(".") || candidate.contains(",")) score += 10;
             
             if (score > highestScore) {
                 highestScore = score;
