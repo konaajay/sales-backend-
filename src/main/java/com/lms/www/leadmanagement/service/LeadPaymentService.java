@@ -128,12 +128,10 @@ public class LeadPaymentService {
                 // CRITICAL DUP CHECK
                 LocalDateTime todayStart = java.time.LocalDate.now().atStartOfDay();
                 if (dueDate != null && dueDate.isBefore(todayStart.plusDays(1))) {
-                    log.info(">>> Skipping PENDING record for installment due today/past: ₹{} due {}", instAmount, dueDate);
                     continue;
                 }
                 if (!isFirstSkipped && amount.compareTo(BigDecimal.ZERO) > 0 && instAmount.compareTo(amount) == 0) {
                     isFirstSkipped = true;
-                    log.info(">>> Skipping PENDING record matching current payment amount: ₹{}", instAmount);
                     continue;
                 }
 
@@ -157,6 +155,17 @@ public class LeadPaymentService {
 
         // Initialize/Sync Student Fee Structure
         studentFeeService.syncStudentFee(lead, BigDecimal.ZERO, totalAmount != null ? totalAmount : totalCommitment, discount, firstInstallmentDate);
+
+        // Set Payment Status to indicate online payment link sent & pending
+        String currentStatus = lead.getStatus() != null ? lead.getStatus().toUpperCase() : "PRE_PAYMENT";
+        if (currentStatus.startsWith("POST_PAYMENT")) {
+            lead.setStatus(currentStatus + "_PENDING");
+        } else if (currentStatus.startsWith("PRE_PAYMENT") || currentStatus.startsWith("PRE-PAYMENT")) {
+            lead.setStatus("PRE_PAYMENT_PENDING");
+        } else {
+            lead.setStatus("POST_PAYMENT_PENDING");
+        }
+        leadRepository.save(lead);
 
         // AUTO-EMAIL student the payment request link (Refactored using Thymeleaf templates)
         String paymentUrl = frontendUrl + "/payment-instruction/" + orderId;
@@ -266,6 +275,23 @@ public class LeadPaymentService {
         leadTaskService.createLeadTask(lead, LocalDateTime.now(), "Installment Reminder Sent - ₹" + payment.getAmount(), "EMI_COLLECTION");
     }
 
+    public void sendSameDayInstallmentReminder(Payment payment) {
+        Lead lead = leadRepository.findById(payment.getLeadId())
+                .orElseThrow(() -> new ResourceNotFoundException("Lead not found"));
+
+        Map<String, String> linkResult = generatePaymentLink(payment.getId());
+        String paymentUrl = linkResult.get("payment_url");
+
+        String dueDateStr = payment.getDueDate() != null ? payment.getDueDate().toLocalDate().toString() : "N/A";
+        
+        mailService.sendOverdueReminder(lead.getEmail(), lead.getName(), payment.getAmount(), dueDateStr);
+
+        payment.setDueDateReminderSent(true);
+        paymentRepository.save(payment);
+
+        leadTaskService.createLeadTask(lead, LocalDateTime.now(), "Same-Day Installment Reminder Sent - ₹" + payment.getAmount(), "EMI_COLLECTION");
+    }
+
     @Transactional
     public void markAsPaid(Long leadId) {
         Lead lead = leadRepository.findById(leadId)
@@ -274,7 +300,7 @@ public class LeadPaymentService {
         lead.setStatus(STATUS_CONVERTED);
         leadRepository.save(lead);
 
-        log.info(">>> Lead {} manually marked as PAID/CONVERTED", lead.getEmail());
+        log.info("Lead {} manually marked as PAID/CONVERTED", lead.getEmail());
     }
 
     @Transactional(readOnly = true)
@@ -533,21 +559,21 @@ public class LeadPaymentService {
         String paymentMethod = data.getPaymentMethod();
         String note = data.getNote();
         
-        // Approval is only required for manual payments (i.e. CASH) recorded by associates (non-managers/non-admins).
-        boolean isManual = "CASH".equalsIgnoreCase(paymentMethod);
-        Payment.Status targetStatus;
-        if (isManual) {
-            targetStatus = isManagerOrAdmin ? Payment.Status.PAID : Payment.Status.PENDING_APPROVAL;
-        } else {
-            targetStatus = Payment.Status.PAID;
-        }
+        // All manual payment verifications (CASH, UPI, BANK TRANSFER) recorded by Associates or Team Leaders require Manager/Admin approval.
+        Payment.Status targetStatus = isManagerOrAdmin ? Payment.Status.PAID : Payment.Status.PENDING_APPROVAL;
         
-        // Modular helper to query first fulfillable slot
-        Payment payment = findFulfillableInstallment(leadId);
+        // Modular helper to query exact installment or first fulfillable slot
+        Payment payment = null;
+        if (data.getInstallmentId() != null) {
+            payment = paymentRepository.findById(data.getInstallmentId()).orElse(null);
+        }
+        if (payment == null) {
+            payment = findFulfillableInstallment(leadId);
+        }
 
         if (payment != null) {
             // Modular helper to handle partial EMI fulfillments
-            handlePartialManualPayment(payment, amount, totalAmount, lead);
+            handlePartialManualPayment(payment, amount, totalAmount, lead, data.getNextDueDate());
             
             payment.setAmount(amount);
             payment.setTotalAmount(totalAmount);
@@ -584,17 +610,17 @@ public class LeadPaymentService {
         }
 
         Payment saved = paymentRepository.save(payment);
-        log.info(">>> Primary Manual Payment Saved: ID={}, Amount={}, Status={}", saved.getId(), saved.getAmount(), saved.getStatus());
+        log.info("Primary Manual Payment Saved: ID={}, Amount={}, Status={}", saved.getId(), saved.getAmount(), saved.getStatus());
 
         List<com.lms.www.leadmanagement.dto.ManualPaymentRequestDTO.InstallmentDetail> installments = data.getInstallments();
-        if (installments != null) {
+        if (installments != null && data.getInstallmentId() == null) {
             paymentRepository.findByLeadId(leadId).stream()
                 .filter(p -> p.getStatus() == Payment.Status.PENDING && TYPE_EMI_INSTALLMENT.equals(p.getPaymentType()) && !p.getId().equals(saved.getId()))
                 .forEach(p -> paymentRepository.delete(p));
             paymentRepository.flush();
             
             // Modular helper to process batch manual installments
-            processManualInstallments(installments, leadId, amount, paymentMethod, requester);
+            processManualInstallments(installments, leadId, totalAmount, paymentMethod, requester, false);
         }
 
         // Modular helper to safely parse future installment date structures
@@ -616,7 +642,7 @@ public class LeadPaymentService {
         if (targetStatus == Payment.Status.PAID) {
             processSuccessfulPayment(saved, amount, data.getNextDueDate());
         } else {
-            log.info(">>> Manual Payment requires Approval. Lead conversion pending.");
+            log.info("Manual Payment requires Approval. Lead conversion pending.");
         }
 
         return convertToDTO(saved);
@@ -641,7 +667,7 @@ public class LeadPaymentService {
 
         processSuccessfulPayment(payment, payment.getAmount(), null);
         
-        log.info(">>> Manager {} Approved Payment for Lead ID: {}", requester.getEmail(), payment.getLeadId());
+        log.info("Manager {} Approved Payment for Lead ID: {}", requester.getEmail(), payment.getLeadId());
     }
 
     @Transactional
@@ -671,7 +697,7 @@ public class LeadPaymentService {
         });
 
         leadRepository.findById(payment.getLeadId()).ifPresent(lead -> {
-            log.info(">>> Transitioning Lead {} status from {} to {} due to rejection", lead.getId(), lead.getStatus(), granularStatus);
+            log.info("Transitioning Lead {} status from {} to {} due to rejection", lead.getId(), lead.getStatus(), granularStatus);
             lead.setStatus(granularStatus);
             leadRepository.save(lead);
         });
@@ -796,13 +822,44 @@ public class LeadPaymentService {
     private LocalDateTime parseDate(String dateStr) {
         if (dateStr == null || dateStr.isBlank()) return null;
         try {
-            if (!dateStr.contains("T")) {
-                dateStr += "T10:00:00";
+            String cleanDate = dateStr.trim();
+            if (cleanDate.contains("T")) {
+                if (cleanDate.endsWith("Z")) {
+                    return java.time.ZonedDateTime.parse(cleanDate).toLocalDateTime();
+                }
+                try {
+                    return java.time.OffsetDateTime.parse(cleanDate).toLocalDateTime();
+                } catch (Exception ex) {
+                    if (cleanDate.length() == 16) {
+                        cleanDate += ":00";
+                    }
+                    if (cleanDate.contains("+")) {
+                        cleanDate = cleanDate.substring(0, cleanDate.indexOf('+'));
+                    } else if (cleanDate.contains("-") && cleanDate.lastIndexOf('-') > cleanDate.indexOf('T')) {
+                        cleanDate = cleanDate.substring(0, cleanDate.lastIndexOf('-'));
+                    }
+                    return LocalDateTime.parse(cleanDate);
+                }
+            } else {
+                if (cleanDate.contains("/")) {
+                    try {
+                        java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("MM/dd/yyyy hh:mm a");
+                        return LocalDateTime.parse(cleanDate, formatter);
+                    } catch (Exception e1) {
+                        try {
+                            java.time.format.DateTimeFormatter formatter2 = java.time.format.DateTimeFormatter.ofPattern("MM/dd/yyyy");
+                            return java.time.LocalDate.parse(cleanDate, formatter2).atTime(10, 0);
+                        } catch (Exception e2) {
+                            // let fallback happen
+                        }
+                    }
+                }
+                if (cleanDate.length() == 10) {
+                    return java.time.LocalDate.parse(cleanDate).atTime(10, 0);
+                }
+                cleanDate += "T10:00:00";
+                return LocalDateTime.parse(cleanDate);
             }
-            if (dateStr.length() == 16) {
-                dateStr += ":00";
-            }
-            return LocalDateTime.parse(dateStr);
         } catch (Exception e) {
             log.warn(">>> Failed to parse date '{}': {}", dateStr, e.getMessage());
             return null;
@@ -827,13 +884,15 @@ public class LeadPaymentService {
                 .orElse(null);
     }
 
-    private void handlePartialManualPayment(Payment payment, BigDecimal paidAmount, BigDecimal totalAmount, Lead lead) {
+    private void handlePartialManualPayment(Payment payment, BigDecimal paidAmount, BigDecimal totalAmount, Lead lead, String nextDueDateStr) {
         BigDecimal originalAmount = payment.getAmount() != null ? payment.getAmount() : BigDecimal.ZERO;
         if (paidAmount.compareTo(originalAmount) < 0) {
             BigDecimal remainder = originalAmount.subtract(paidAmount);
-            log.info(">>> Partial Payment Protocol: Scheduled ₹{}, Paid ₹{}. Creating remainder record for ₹{}", originalAmount, paidAmount, remainder);
             
-            LocalDateTime remainderDueDate = payment.getDueDate() != null ? payment.getDueDate().plusDays(7) : LocalDateTime.now().plusDays(7);
+            LocalDateTime remainderDueDate = parseDate(nextDueDateStr);
+            if (remainderDueDate == null) {
+                remainderDueDate = payment.getDueDate() != null ? payment.getDueDate().plusDays(7) : LocalDateTime.now().plusDays(7);
+            }
             Payment remainderInst = Payment.builder()
                     .leadId(payment.getLeadId())
                     .amount(remainder)
@@ -845,13 +904,32 @@ public class LeadPaymentService {
             paymentRepository.save(remainderInst);
             
             leadTaskService.createLeadTask(lead, remainderDueDate, "EMI Collection - Remainder (Partial)", "EMI_COLLECTION");
+        } else if (paidAmount.compareTo(originalAmount) > 0) {
+            BigDecimal excess = paidAmount.subtract(originalAmount);
+            
+            List<Payment> pendingInstallments = paymentRepository.findByLeadId(payment.getLeadId()).stream()
+                    .filter(p -> p.getStatus() == Payment.Status.PENDING && TYPE_EMI_INSTALLMENT.equals(p.getPaymentType()) && !p.getId().equals(payment.getId()))
+                    .sorted(Comparator.comparing(p -> p.getDueDate() != null ? p.getDueDate() : LocalDateTime.MAX))
+                    .collect(Collectors.toList());
+            
+            for (Payment pending : pendingInstallments) {
+                if (excess.compareTo(BigDecimal.ZERO) <= 0) break;
+                
+                BigDecimal pendingAmount = pending.getAmount() != null ? pending.getAmount() : BigDecimal.ZERO;
+                if (excess.compareTo(pendingAmount) >= 0) {
+                    excess = excess.subtract(pendingAmount);
+                    paymentRepository.delete(pending);
+                } else {
+                    pending.setAmount(pendingAmount.subtract(excess));
+                    paymentRepository.save(pending);
+                    excess = BigDecimal.ZERO;
+                }
+            }
         }
     }
 
-    private void processManualInstallments(List<com.lms.www.leadmanagement.dto.ManualPaymentRequestDTO.InstallmentDetail> installments, Long leadId, BigDecimal paidAmount, String paymentMethod, User requester) {
-        log.info(">>> Processing {} manual installments for lead {}", installments.size(), leadId);
+    private void processManualInstallments(List<com.lms.www.leadmanagement.dto.ManualPaymentRequestDTO.InstallmentDetail> installments, Long leadId, BigDecimal totalPackageAmount, String paymentMethod, User requester, boolean isExistingEmiPlan) {
         
-        boolean isFirstSkipped = false;
         for (com.lms.www.leadmanagement.dto.ManualPaymentRequestDTO.InstallmentDetail instData : installments) {
             try {
                 BigDecimal instAmount = instData.getAmount();
@@ -860,22 +938,10 @@ public class LeadPaymentService {
                 String dueDateStr = instData.getDueDate();
                 LocalDateTime dueDate = parseDate(dueDateStr);
 
-                // CRITICAL DUP CHECK
-                LocalDateTime todayStart = java.time.LocalDate.now().atStartOfDay();
-                if (dueDate != null && dueDate.isBefore(todayStart.plusDays(1))) {
-                    log.info(">>> Skipping PENDING record for installment due today/past: ₹{} due {}", instAmount, dueDate);
-                    continue;
-                }
-                if (!isFirstSkipped && paidAmount.compareTo(BigDecimal.ZERO) > 0 && instAmount.compareTo(paidAmount) == 0) {
-                    isFirstSkipped = true;
-                    log.info(">>> Skipping PENDING record matching current payment amount: ₹{}", instAmount);
-                    continue;
-                }
-
                 Payment inst = Payment.builder()
                         .leadId(leadId)
                         .amount(instAmount)
-                        .totalAmount(paidAmount)
+                        .totalAmount(totalPackageAmount)
                         .status(Payment.Status.PENDING)
                         .paymentType(TYPE_EMI_INSTALLMENT)
                         .dueDate(dueDate)

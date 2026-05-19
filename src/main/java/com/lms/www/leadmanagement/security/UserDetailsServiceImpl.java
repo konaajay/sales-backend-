@@ -7,6 +7,7 @@ import org.springframework.security.core.userdetails.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@lombok.extern.slf4j.Slf4j
 @Service
 @Transactional(readOnly = true)
 public class UserDetailsServiceImpl implements UserDetailsService {
@@ -19,16 +20,14 @@ public class UserDetailsServiceImpl implements UserDetailsService {
 
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> {
-                    System.out.println("[DEBUG-AUTH] User not found in DB: " + email);
+                    log.warn("User lookup failed: {}", email);
                     return new UsernameNotFoundException("Invalid credentials");
                 });
 
         if (!user.isActive()) {
-            System.out.println("[DEBUG-AUTH] User exists but is disabled (active=false): " + email);
+            log.warn("Inactive user login attempt: {}", email);
             throw new org.springframework.security.authentication.DisabledException("Account inactive");
         }
-        
-        System.out.println("[DEBUG-AUTH] User found and active: " + email + ", proceeding to password check.");
 
         return UserDetailsImpl.build(user);
     }

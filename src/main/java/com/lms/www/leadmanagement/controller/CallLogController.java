@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+@lombok.extern.slf4j.Slf4j
 @RestController
 @RequestMapping("/api/call-records")
 public class CallLogController {
@@ -72,7 +73,7 @@ public class CallLogController {
                         // Fallback: Try parsing with space (Common for mobile)
                         startTime = java.time.LocalDateTime.parse(startTimeStr.replace(" ", "T"));
                     } catch (Exception ex) {
-                        System.err.println("Failed to parse startTime from mobile: " + startTimeStr);
+                        log.warn("Failed to parse startTime from mobile: {}", startTimeStr);
                     }
                 }
             }
@@ -106,8 +107,7 @@ public class CallLogController {
             List<CallRecord> logs = callLogService.getMyLogs(getCurrentUserId(), from, to);
             return ResponseEntity.ok(ApiResponse.success(logs));
         } catch (Exception e) {
-            System.err.println("CRITICAL ERROR: GET /call-records/my - " + e.getMessage());
-            e.printStackTrace();
+            log.error("CRITICAL ERROR: GET /call-records/my - {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(ApiResponse.error(e.getMessage()));
         }
     }
@@ -200,8 +200,6 @@ public class CallLogController {
             @RequestParam(required = false) @DateTimeFormat(iso = ISO.DATE) java.time.LocalDate to,
             @RequestParam(required = false) Long userId) {
         try {
-            // Diagnostic logging for 400 errors
-            System.out.println("DEBUG: GET /admin/all - from=" + from + ", to=" + to + ", userId=" + userId);
             List<CallRecord> logs = callLogService.getAllLogsAdmin(from, to, userId, getCurrentUserId());
             return ResponseEntity.ok(ApiResponse.success(logs));
         } catch (Exception e) {

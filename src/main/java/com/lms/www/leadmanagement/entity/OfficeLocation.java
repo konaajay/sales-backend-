@@ -25,4 +25,13 @@ public class OfficeLocation {
 
     @Builder.Default
     private Double radius = 30.0; // Default 30 meters
+
+    @Builder.Default
+    private Integer trackingIntervalSec = 300;
+
+    @Builder.Default
+    private Integer maxAccuracyMeters = 100000;
+
+    @Builder.Default
+    private Integer maxIdleMinutes = 30;
 }

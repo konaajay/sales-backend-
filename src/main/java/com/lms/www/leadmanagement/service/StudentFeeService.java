@@ -83,7 +83,7 @@ public class StudentFeeService {
         String newStatus = fee.getBalanceAmount().compareTo(BigDecimal.ZERO) <= 0 ? STATUS_CONVERTED : fee.getPaymentStatus();
 
         if (!newStatus.equalsIgnoreCase(lead.getStatus())) {
-            log.info(">>> StudentFeeService: Transitioning Lead {} status from {} to {}", lead.getId(), lead.getStatus(), newStatus);
+            log.info("StudentFeeService: Transitioning Lead {} status from {} to {}", lead.getId(), lead.getStatus(), newStatus);
             lead.setStatus(newStatus);
             leadRepository.save(lead);
         }

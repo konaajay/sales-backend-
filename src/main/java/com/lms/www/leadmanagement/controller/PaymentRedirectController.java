@@ -21,7 +21,6 @@ public class PaymentRedirectController {
         if (mode != null) {
             redirectUrl += "?mode=" + mode;
         }
-        log.info(">>> REDIRECTING /pay/ request from Backend to: {}", redirectUrl);
         return new RedirectView(redirectUrl);
     }
 }

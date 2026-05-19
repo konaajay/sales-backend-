@@ -10,6 +10,7 @@ import java.time.LocalTime;
 import java.util.List;
 
 // @Component
+@lombok.extern.slf4j.Slf4j
 public class AttendanceDataSeeder implements CommandLineRunner {
 
     @Autowired
@@ -26,8 +27,6 @@ public class AttendanceDataSeeder implements CommandLineRunner {
 
     private void seedShifts() {
         if (shiftRepository.count() == 0) {
-            System.out.println("SEEDING: Initializing operational attendance shifts...");
-
             AttendanceShift dayShift = AttendanceShift.builder()
                     .name("Day Shift (Standard)")
                     .startTime(LocalTime.of(10, 0))
@@ -56,13 +55,11 @@ public class AttendanceDataSeeder implements CommandLineRunner {
                     .build();
 
             shiftRepository.saveAll(List.of(dayShift, afternoonShift, nightShift));
-            System.out.println("SEEDING COMPLETE: 3 shifts initialized.");
         }
     }
 
     private void seedOffices() {
         if (officeRepository.count() == 0) {
-            System.out.println("SEEDING: Initializing default office location...");
             OfficeLocation hq = OfficeLocation.builder()
                     .name("gYantrix")
                     .latitude(17.4535791)
@@ -70,7 +67,6 @@ public class AttendanceDataSeeder implements CommandLineRunner {
                     .radius(100.0) 
                     .build();
             officeRepository.save(hq);
-            System.out.println("SEEDING COMPLETE: Primary office lead established.");
         }
     }
 }

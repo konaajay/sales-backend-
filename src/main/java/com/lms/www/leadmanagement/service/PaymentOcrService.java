@@ -37,9 +37,7 @@ public class PaymentOcrService {
             tessDir.mkdirs();
         }
         
-        if (engData.exists()) {
-            log.info("OCR Protocol: 'eng.traineddata' detected at {}. Ready for extraction.", engData.getAbsolutePath());
-        } else {
+        if (!engData.exists()) {
             log.error("CRITICAL: 'eng.traineddata' NOT FOUND at {}. OCR will fail until this file is present.", engData.getAbsolutePath());
         }
         
@@ -51,44 +49,85 @@ public class PaymentOcrService {
     }
 
     public OcrResponseDTO extractPaymentData(MultipartFile file) {
+        File tempFile = null;
         try {
-            // 1. Create temp file
-            Path tempFile = Files.createTempFile("ocr-", file.getOriginalFilename());
-            file.transferTo(tempFile.toFile());
+            BufferedImage originalImage = null;
+            try {
+                originalImage = ImageIO.read(file.getInputStream());
+            } catch (Exception e) {
+                log.warn("ImageIO failed to read image input stream: {}", e.getMessage());
+            }
 
-            // 2. Perform OCR
-            log.info("Starting OCR processing for file: {}", file.getOriginalFilename());
-            String result = tesseract.doOCR(tempFile.toFile());
-            log.info(">>> [OCR-RAW-RESULT]\n{}\n[OCR-RAW-END]", result);
-            
-            // 3. Parse result
+            String result;
+            if (originalImage != null) {
+                BufferedImage preprocessedImage = preprocess(originalImage);
+                tempFile = File.createTempFile("ocr-preprocessed-", ".png");
+                ImageIO.write(preprocessedImage, "png", tempFile);
+                result = tesseract.doOCR(tempFile);
+            } else {
+                log.warn("Falling back to original file OCR due to image reading issue...");
+                tempFile = File.createTempFile("ocr-fallback-", file.getOriginalFilename());
+                file.transferTo(tempFile);
+                result = tesseract.doOCR(tempFile);
+            }
+
+            // Parse result
             OcrResponseDTO dto = PaymentOcrParser.parse(result);
-            
-            // 4. Cleanup
-            Files.deleteIfExists(tempFile);
-            
             return dto;
 
-        } catch (TesseractException e) {
-            log.error("OCR Engine Failure: {}", e.getMessage());
+        } catch (Exception e) {
+            log.error("OCR Engine Failure (Tesseract could not process the file): {}", e.getMessage(), e);
             return OcrResponseDTO.builder()
                     .success(false)
-                    .errorMessage("OCR Engine Failure: " + e.getMessage())
+                    .errorMessage("OCR extraction failed. Please enter UTR and amount details manually.")
                     .build();
-        } catch (IOException e) {
-            log.error("File Processing Failure: {}", e.getMessage());
-            return OcrResponseDTO.builder()
-                    .success(false)
-                    .errorMessage("File processing failed")
-                    .build();
+        } finally {
+            if (tempFile != null && tempFile.exists()) {
+                try {
+                    tempFile.delete();
+                } catch (Exception e) {
+                    log.warn("Failed to delete temp OCR file: {}", e.getMessage());
+                }
+            }
         }
     }
     
     /**
-     * Optional: Pre-processing to improve accuracy for blurry screenshots
+     * Pre-processing to improve accuracy for blurry screenshots
      */
     private BufferedImage preprocess(BufferedImage image) {
-        // Image scaling, grayscale, or thresholding can be added here
-        return image;
+        try {
+            if (image == null) return null;
+            
+            // 1. Scale image (upscale by 2x for better OCR recognition if width is relatively small)
+            int targetWidth = image.getWidth() * 2;
+            int targetHeight = image.getHeight() * 2;
+            BufferedImage scaled = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_RGB);
+            java.awt.Graphics2D g2d = scaled.createGraphics();
+            g2d.setRenderingHint(java.awt.RenderingHints.KEY_INTERPOLATION, java.awt.RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+            g2d.drawImage(image, 0, 0, targetWidth, targetHeight, null);
+            g2d.dispose();
+            
+            // 2. Grayscale conversion
+            BufferedImage gray = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_BYTE_GRAY);
+            java.awt.Graphics g = gray.createGraphics();
+            g.drawImage(scaled, 0, 0, null);
+            g.dispose();
+            
+            // 3. Sharpening filter to enhance text contrast and edges
+            float[] sharpenKernel = {
+                0f, -1f, 0f,
+                -1f, 5f, -1f,
+                0f, -1f, 0f
+            };
+            java.awt.image.Kernel kernel = new java.awt.image.Kernel(3, 3, sharpenKernel);
+            java.awt.image.ConvolveOp convolve = new java.awt.image.ConvolveOp(kernel, java.awt.image.ConvolveOp.EDGE_NO_OP, null);
+            BufferedImage sharpened = convolve.filter(gray, null);
+            
+            return sharpened;
+        } catch (Exception e) {
+            log.warn("Image preprocessing failed, falling back to original: {}", e.getMessage());
+            return image;
+        }
     }
 }

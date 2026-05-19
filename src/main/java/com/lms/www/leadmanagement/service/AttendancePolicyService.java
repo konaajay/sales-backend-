@@ -1,13 +1,10 @@
 package com.lms.www.leadmanagement.service;
 
-import com.lms.www.leadmanagement.dto.AttendancePolicyDTO;
 import com.lms.www.leadmanagement.dto.OfficeLocationDTO;
-import com.lms.www.leadmanagement.entity.AttendancePolicy;
 import com.lms.www.leadmanagement.entity.AttendanceShift;
 import com.lms.www.leadmanagement.entity.OfficeLocation;
 import com.lms.www.leadmanagement.exception.ResourceNotFoundException;
 import com.lms.www.leadmanagement.mapper.AttendanceMapper;
-import com.lms.www.leadmanagement.repository.AttendancePolicyRepository;
 import com.lms.www.leadmanagement.repository.AttendanceSessionRepository;
 import com.lms.www.leadmanagement.repository.AttendanceShiftRepository;
 import com.lms.www.leadmanagement.repository.OfficeLocationRepository;
@@ -24,7 +21,6 @@ import java.util.stream.Collectors;
 public class AttendancePolicyService {
 
     private final OfficeLocationRepository officeLocationRepository;
-    private final AttendancePolicyRepository attendancePolicyRepository;
     private final AttendanceShiftRepository attendanceShiftRepository;
     private final AttendanceSessionRepository attendanceSessionRepository;
     private final AttendanceMapper attendanceMapper;
@@ -64,105 +60,13 @@ public class AttendancePolicyService {
     public void deleteOffice(Long id) {
         // Rule 5: Stronger delete checks
         if (attendanceSessionRepository.existsByOfficeId(id)
-                || attendancePolicyRepository.findByOfficeId(id).isPresent()
                 || !attendanceShiftRepository.findByOfficeId(id).isEmpty()) {
-            throw new IllegalStateException("Cannot delete office. It is currently linked to sessions, policies, or shifts.");
+            throw new IllegalStateException("Cannot delete office. It is currently linked to sessions or shifts.");
         }
         officeLocationRepository.deleteById(id);
     }
 
-    @Transactional(readOnly = true)
-    public List<AttendancePolicyDTO> getAllPolicies() {
-        return attendancePolicyRepository.findAll().stream()
-                .map(attendanceMapper::toDTO)
-                .collect(Collectors.toList());
-    }
 
-    @Transactional
-    public AttendancePolicy createPolicy(AttendancePolicyDTO dto) {
-        validatePolicy(dto);
-        OfficeLocation office = officeLocationRepository.findById(dto.getOfficeId())
-                .orElseThrow(() -> new ResourceNotFoundException("Office not found"));
-
-        AttendancePolicy policy = attendancePolicyRepository.findByOfficeId(office.getId())
-                .orElse(AttendancePolicy.builder().office(office).build());
-
-        policy.setShortBreakStartTime(parseTime(dto.getShortBreakStartTime(), DEFAULT_SHORT_BREAK_START));
-        policy.setShortBreakEndTime(parseTime(dto.getShortBreakEndTime(), DEFAULT_SHORT_BREAK_END));
-        policy.setLongBreakStartTime(parseTime(dto.getLongBreakStartTime(), DEFAULT_LONG_BREAK_START));
-        policy.setLongBreakEndTime(parseTime(dto.getLongBreakEndTime(), DEFAULT_LONG_BREAK_END));
-        policy.setShiftStartTime(parseTime(dto.getShiftStartTime(), LocalTime.of(9, 30)));
-        policy.setShiftEndTime(parseTime(dto.getShiftEndTime(), LocalTime.of(18, 30)));
-        policy.setGracePeriodMinutes(dto.getGracePeriodMinutes() != null ? dto.getGracePeriodMinutes() : DEFAULT_GRACE_PERIOD);
-        policy.setTrackingIntervalSec(dto.getTrackingIntervalSec() != null ? dto.getTrackingIntervalSec() : DEFAULT_TRACKING_INTERVAL);
-        policy.setMaxAccuracyMeters(dto.getMaxAccuracyMeters());
-        policy.setMinimumWorkMinutes(dto.getMinimumWorkMinutes());
-        policy.setHalfDayMinutes(dto.getHalfDayMinutes());
-        policy.setMaxIdleMinutes(dto.getMaxIdleMinutes());
-
-        return attendancePolicyRepository.save(policy);
-    }
-
-    @Transactional
-    public AttendancePolicy updatePolicy(Long id, AttendancePolicyDTO dto) {
-        validatePolicy(dto);
-        AttendancePolicy policy = attendancePolicyRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Policy not found"));
-
-        policy.setShortBreakStartTime(parseTime(dto.getShortBreakStartTime(), policy.getShortBreakStartTime()));
-        policy.setShortBreakEndTime(parseTime(dto.getShortBreakEndTime(), policy.getShortBreakEndTime()));
-        policy.setLongBreakStartTime(parseTime(dto.getLongBreakStartTime(), policy.getLongBreakStartTime()));
-        policy.setLongBreakEndTime(parseTime(dto.getLongBreakEndTime(), policy.getLongBreakEndTime()));
-        policy.setShiftStartTime(parseTime(dto.getShiftStartTime(), policy.getShiftStartTime()));
-        policy.setShiftEndTime(parseTime(dto.getShiftEndTime(), policy.getShiftEndTime()));
-        
-        if (dto.getGracePeriodMinutes() != null) policy.setGracePeriodMinutes(dto.getGracePeriodMinutes());
-        if (dto.getTrackingIntervalSec() != null) policy.setTrackingIntervalSec(dto.getTrackingIntervalSec());
-        if (dto.getMaxAccuracyMeters() != null) policy.setMaxAccuracyMeters(dto.getMaxAccuracyMeters());
-        if (dto.getMinimumWorkMinutes() != null) policy.setMinimumWorkMinutes(dto.getMinimumWorkMinutes());
-        if (dto.getHalfDayMinutes() != null) policy.setHalfDayMinutes(dto.getHalfDayMinutes());
-        if (dto.getMaxIdleMinutes() != null) policy.setMaxIdleMinutes(dto.getMaxIdleMinutes());
-
-        return attendancePolicyRepository.save(policy);
-    }
-
-    private LocalTime parseTime(String time, LocalTime defaultValue) {
-        if (time == null || time.isEmpty()) return defaultValue;
-        try {
-            // Rule 7: Normalize (strip seconds/nanos)
-            return LocalTime.parse(time).withSecond(0).withNano(0);
-        } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid time format: " + time + ". Use HH:mm");
-        }
-    }
-
-    private void validatePolicy(AttendancePolicyDTO dto) {
-        LocalTime shiftStart = parseTime(dto.getShiftStartTime(), LocalTime.of(9, 30));
-        LocalTime shiftEnd = parseTime(dto.getShiftEndTime(), LocalTime.of(18, 30));
-        if (shiftStart.isAfter(shiftEnd)) throw new IllegalArgumentException("Shift start must be before end");
-
-        LocalTime sbStart = parseTime(dto.getShortBreakStartTime(), DEFAULT_SHORT_BREAK_START);
-        LocalTime sbEnd = parseTime(dto.getShortBreakEndTime(), DEFAULT_SHORT_BREAK_END);
-        if (sbStart.isAfter(sbEnd)) throw new IllegalArgumentException("Short break start must be before end");
-
-        LocalTime lbStart = parseTime(dto.getLongBreakStartTime(), DEFAULT_LONG_BREAK_START);
-        LocalTime lbEnd = parseTime(dto.getLongBreakEndTime(), DEFAULT_LONG_BREAK_END);
-        if (lbStart.isAfter(lbEnd)) throw new IllegalArgumentException("Long break start must be before end");
-
-        if (sbStart.isBefore(shiftStart) || sbEnd.isAfter(shiftEnd)) {
-            throw new IllegalArgumentException("Short break must be within shift time");
-        }
-        if (lbStart.isBefore(shiftStart) || lbEnd.isAfter(shiftEnd)) {
-            throw new IllegalArgumentException("Long break must be within shift time");
-        }
-
-        // Rule 2: Improved Overlap Check (allows 13:00-13:30 and 13:30-14:00)
-        if (sbStart.isBefore(lbEnd) && lbStart.isBefore(sbEnd)) {
-            throw new IllegalArgumentException("Breaks must not overlap");
-        }
-    }
-
-    @Transactional(readOnly = true)
     public List<AttendanceShift> getAllShifts() {
         return attendanceShiftRepository.findAll();
     }
@@ -236,17 +140,5 @@ public class AttendancePolicyService {
     public void deleteShift(Long id) {
         if (!attendanceShiftRepository.existsById(id)) throw new ResourceNotFoundException("Shift not found");
         attendanceShiftRepository.deleteById(id);
-    }
-
-    @Transactional
-    public void deletePolicy(Long id) {
-        AttendancePolicy policy = attendancePolicyRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Policy not found"));
-        
-        // Rule 5: Safe delete check (Policy is linked to Office, Sessions are linked to Office)
-        if (attendanceSessionRepository.existsByOfficeId(policy.getOffice().getId())) {
-            throw new IllegalStateException("Policy is in use by sessions for office: " + policy.getOffice().getName());
-        }
-        attendancePolicyRepository.delete(policy);
     }
 }

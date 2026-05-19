@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
+@lombok.extern.slf4j.Slf4j
 @RestController
 @RequestMapping("/api/admin/pipeline-stages")
 public class PipelineStageController {
@@ -20,56 +21,61 @@ public class PipelineStageController {
     @GetMapping
     @PreAuthorize("hasAnyAuthority('VIEW_LEADS', 'ROLE_ADMIN', 'ADMIN')")
     public ResponseEntity<com.lms.www.leadmanagement.dto.ApiResponse<List<PipelineStage>>> getAllStages() {
-        return ResponseEntity.ok(com.lms.www.leadmanagement.dto.ApiResponse.success(pipelineStageRepository.findAllByOrderByOrderIndexAsc()));
+        return ResponseEntity.ok(com.lms.www.leadmanagement.dto.ApiResponse
+                .success(pipelineStageRepository.findAllByOrderByOrderIndexAsc()));
     }
 
     @GetMapping("/active")
     public ResponseEntity<com.lms.www.leadmanagement.dto.ApiResponse<List<PipelineStage>>> getActiveStages() {
-        return ResponseEntity.ok(com.lms.www.leadmanagement.dto.ApiResponse.success(pipelineStageRepository.findByActiveTrueOrderByOrderIndexAsc()));
+        return ResponseEntity.ok(com.lms.www.leadmanagement.dto.ApiResponse
+                .success(pipelineStageRepository.findByActiveTrueOrderByOrderIndexAsc()));
     }
 
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN')")
     public ResponseEntity<com.lms.www.leadmanagement.dto.ApiResponse<?>> createStage(@RequestBody PipelineStage stage) {
-        System.out.println(">>> Request: CREATE PipelineStage - Label: " + stage.getLabel() + ", Value: " + stage.getStatusValue());
-        
-        if (stage.getStatusValue() == null || stage.getStatusValue().trim().isEmpty()) {
-            return ResponseEntity.badRequest().body(com.lms.www.leadmanagement.dto.ApiResponse.error("Status value is required"));
-        }
 
-        // Standardize status value if it matches a known system status
+        if (stage.getStatusValue() == null || stage.getStatusValue().trim().isEmpty()) {
+            return ResponseEntity.badRequest()
+                    .body(com.lms.www.leadmanagement.dto.ApiResponse.error("Status value is required"));
+        }
         String statusToUse = stage.getStatusValue();
-        com.lms.www.leadmanagement.entity.LeadStatus matchedStatus = com.lms.www.leadmanagement.entity.LeadStatus.fromString(statusToUse);
-        
+        com.lms.www.leadmanagement.entity.LeadStatus matchedStatus = com.lms.www.leadmanagement.entity.LeadStatus
+                .fromString(statusToUse);
+
         if (matchedStatus != null) {
             statusToUse = matchedStatus.name();
             stage.setStatusValue(statusToUse);
         }
 
         if (pipelineStageRepository.existsByStatusValue(statusToUse)) {
-            return ResponseEntity.badRequest().body(com.lms.www.leadmanagement.dto.ApiResponse.error("Status value '" + statusToUse + "' already exists"));
+            return ResponseEntity.badRequest().body(com.lms.www.leadmanagement.dto.ApiResponse
+                    .error("Status value '" + statusToUse + "' already exists"));
         }
-        
-        return ResponseEntity.ok(com.lms.www.leadmanagement.dto.ApiResponse.success(pipelineStageRepository.save(stage)));
+
+        return ResponseEntity
+                .ok(com.lms.www.leadmanagement.dto.ApiResponse.success(pipelineStageRepository.save(stage)));
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN')")
-    public ResponseEntity<com.lms.www.leadmanagement.dto.ApiResponse<PipelineStage>> updateStage(@PathVariable Long id, @RequestBody PipelineStage stageDetails) {
-        System.out.println(">>> Request: UPDATE PipelineStage ID: " + id + " - New Label: " + stageDetails.getLabel());
+    public ResponseEntity<com.lms.www.leadmanagement.dto.ApiResponse<PipelineStage>> updateStage(@PathVariable Long id,
+            @RequestBody PipelineStage stageDetails) {
         PipelineStage stage = pipelineStageRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Stage not found"));
-        
+
         if (stageDetails.getStatusValue() != null && !stageDetails.getStatusValue().equals(stage.getStatusValue())) {
             String statusToUse = stageDetails.getStatusValue();
-            com.lms.www.leadmanagement.entity.LeadStatus matchedStatus = com.lms.www.leadmanagement.entity.LeadStatus.fromString(statusToUse);
-            
+            com.lms.www.leadmanagement.entity.LeadStatus matchedStatus = com.lms.www.leadmanagement.entity.LeadStatus
+                    .fromString(statusToUse);
+
             if (matchedStatus != null) {
                 statusToUse = matchedStatus.name();
             }
 
             if (pipelineStageRepository.existsByStatusValue(statusToUse)) {
-                return ResponseEntity.badRequest().body(com.lms.www.leadmanagement.dto.ApiResponse.error("Status value '" + statusToUse + "' already exists"));
+                return ResponseEntity.badRequest().body(com.lms.www.leadmanagement.dto.ApiResponse
+                        .error("Status value '" + statusToUse + "' already exists"));
             }
             stage.setStatusValue(statusToUse);
         }
@@ -79,14 +85,16 @@ public class PipelineStageController {
         stage.setAnalyticBucket(stageDetails.getAnalyticBucket());
         stage.setOrderIndex(stageDetails.getOrderIndex());
         stage.setActive(stageDetails.isActive());
-        
+
         // Smart Config
         stage.setRequireNote(stageDetails.isRequireNote());
         stage.setRequireDate(stageDetails.isRequireDate());
         stage.setCreateTask(stageDetails.isCreateTask());
-        
-        return ResponseEntity.ok(com.lms.www.leadmanagement.dto.ApiResponse.success(pipelineStageRepository.save(stage)));
+
+        return ResponseEntity
+                .ok(com.lms.www.leadmanagement.dto.ApiResponse.success(pipelineStageRepository.save(stage)));
     }
+
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN')")
     public ResponseEntity<com.lms.www.leadmanagement.dto.ApiResponse<Void>> deleteStage(@PathVariable Long id) {
@@ -97,9 +105,9 @@ public class PipelineStageController {
     @PatchMapping("/{id}/reorder")
     @PreAuthorize("hasAnyRole('ADMIN')")
     public ResponseEntity<com.lms.www.leadmanagement.dto.ApiResponse<List<PipelineStage>>> reorderStage(
-            @PathVariable Long id, 
+            @PathVariable Long id,
             @RequestParam String direction) {
-        
+
         List<PipelineStage> stages = pipelineStageRepository.findAllByOrderByOrderIndexAsc();
         int index = -1;
         for (int i = 0; i < stages.size(); i++) {
@@ -110,7 +118,8 @@ public class PipelineStageController {
         }
 
         if (index == -1) {
-            return ResponseEntity.badRequest().body(com.lms.www.leadmanagement.dto.ApiResponse.error("Stage not found"));
+            return ResponseEntity.badRequest()
+                    .body(com.lms.www.leadmanagement.dto.ApiResponse.error("Stage not found"));
         }
 
         if ("UP".equalsIgnoreCase(direction) && index > 0) {
@@ -131,6 +140,7 @@ public class PipelineStageController {
             pipelineStageRepository.save(next);
         }
 
-        return ResponseEntity.ok(com.lms.www.leadmanagement.dto.ApiResponse.success(pipelineStageRepository.findAllByOrderByOrderIndexAsc()));
+        return ResponseEntity.ok(com.lms.www.leadmanagement.dto.ApiResponse
+                .success(pipelineStageRepository.findAllByOrderByOrderIndexAsc()));
     }
 }

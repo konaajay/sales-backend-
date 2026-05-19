@@ -269,12 +269,10 @@ public class LeadService {
                     // 2. Or if its amount matches the payment currently being recorded and we haven't skipped yet.
                     LocalDateTime todayStart = java.time.LocalDate.now().atStartOfDay();
                     if (due.isBefore(todayStart.plusDays(1))) {
-                        log.info(">>> Skipping PENDING record for installment due today/past: ₹{} due {}", inst.getAmount(), due);
                         continue;
                     }
                     if (!isFirstSkipped && paid.compareTo(BigDecimal.ZERO) > 0 && inst.getAmount().compareTo(paid) == 0) {
                         isFirstSkipped = true;
-                        log.info(">>> Skipping PENDING record matching current payment amount: ₹{}", inst.getAmount());
                         continue;
                     }
 
@@ -374,7 +372,6 @@ public class LeadService {
         
         // Strategic: If we are rescheduling (EMI with date) or finishing (terminal), clear the slate first
         if (terminalStatuses.contains(upperStatus) || ("EMI".equalsIgnoreCase(upperStatus) && hasExplicitDueDate) || "EMI_FOLLOWUP".equalsIgnoreCase(upperStatus)) {
-            log.info("[PIPELINE] Task cleanup for Lead #{} (Status: {}).", lead.getId(), upperStatus);
             // Use CANCELLED for automated cleanup to avoid confusion with user-initiated completions
             leadTaskRepository.cancelAllPendingByLeadId(lead.getId());
             
@@ -482,18 +479,13 @@ public class LeadService {
             boolean isChanging = (lead.getAssignedTo() == null) || !lead.getAssignedTo().getId().equals(target.getId());
             boolean isTL = securityService.isTeamLeader(requester) || "teamlead1@lms.com".equalsIgnoreCase(requester.getEmail());
             
-            log.info("[ASSIGN] User {} (isTL: {}) attempting to assign Lead #{} to User {}. currentCount: {}", 
-                requester.getEmail(), isTL, leadId, userId, lead.getReassignmentCount());
-
             if (isChanging && isTL && !"OPEN".equalsIgnoreCase(lead.getStatus())) {
                 int currentCount = lead.getReassignmentCount() != null ? lead.getReassignmentCount() : 0;
-                log.info("[COUNT-CHECK] Lead #{} current actions: {}", leadId, currentCount);
                 if (currentCount >= 2) {
                     log.warn("[BLOCK] Reassignment limit reached for Lead #{} by TL {}", leadId, requester.getEmail());
                     throw new InvalidRequestException("Strategic restriction: Team Leaders can only assign and reassign a lead once to maintain follow-up stability.");
                 }
                 lead.setReassignmentCount(currentCount + 1);
-                log.info("[COUNT-SUCCESS] Lead #{} updated count to {}", leadId, lead.getReassignmentCount());
             }
 
             lead.setAssignedTo(target);

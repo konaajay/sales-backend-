@@ -155,7 +155,6 @@ public class DashboardStatsService {
         LocalDateTime dayStart = zdtNow.toLocalDate().atStartOfDay();
         LocalDateTime dayEnd = zdtNow.toLocalDate().atTime(LocalTime.MAX);
 
-        log.info(">>> [GET_STATS] Scope userIds count: {}", userIds != null ? userIds.size() : 0);
         
         List<User> activeScopeUsers = userRepository.findAllById(new ArrayList<>(userIds)).stream()
                 .filter(u -> {
@@ -169,8 +168,6 @@ public class DashboardStatsService {
                     return joinDateOk && isActive;
                 })
                 .collect(Collectors.toList());
-
-        log.info(">>> [GET_STATS] Active scope users size: {}", activeScopeUsers.size());
 
         final List<Long> userIdList = activeScopeUsers.stream()
                 .map(User::getId)
@@ -214,7 +211,6 @@ public class DashboardStatsService {
 
         // Optimized Attendance Stats using Range-Aware Daily Logs
         List<AttendanceDaily> rangeLogs = attendanceDailyRepository.findAllByUserIdInAndDateBetween(userIdList, from, to);
-        log.info(">>> [GET_STATS] Fetched Range Logs: {}", rangeLogs.size());
         
         // Calculate global present/late/absent by summing up individual user stats
         // (will be calculated inside the performance loop to ensure consistency)
@@ -229,28 +225,16 @@ public class DashboardStatsService {
         }
 
         CompletableFuture<BigDecimal> dailyRevenueFuture = safeAsync(
-                () -> {
-                    BigDecimal rev = isGlobalAdmin ? paymentRepository.getGlobalTotalRevenue(start, end)
-                                : paymentRepository.getTotalRevenueIn(userIdList, start, end);
-                    log.info(">>> [REVENUE STATS] Daily Revenue for range {}-{}: {}", start, end, rev);
-                    return rev;
-                },
+                () -> isGlobalAdmin ? paymentRepository.getGlobalTotalRevenue(start, end)
+                                : paymentRepository.getTotalRevenueIn(userIdList, start, end),
                 BigDecimal.ZERO);
         CompletableFuture<BigDecimal> monthlyRevenueFuture = safeAsync(
-                () -> {
-                    BigDecimal rev = isGlobalAdmin ? paymentRepository.getGlobalTotalRevenue(start.withDayOfMonth(1), end)
-                                : paymentRepository.getTotalRevenueIn(userIdList, start.withDayOfMonth(1), end);
-                    log.info(">>> [REVENUE STATS] Monthly Revenue: {}", rev);
-                    return rev;
-                },
+                () -> isGlobalAdmin ? paymentRepository.getGlobalTotalRevenue(start.withDayOfMonth(1), end)
+                                : paymentRepository.getTotalRevenueIn(userIdList, start.withDayOfMonth(1), end),
                 BigDecimal.ZERO);
         CompletableFuture<BigDecimal> pendingRevenueFuture = safeAsync(
-                () -> {
-                    BigDecimal rev = isGlobalAdmin ? paymentRepository.getGlobalTotalPendingRevenueIn(start.minusYears(5), end)
-                                : paymentRepository.getTotalPendingRevenueIn(userIdList, start.minusYears(5), end);
-                    log.info(">>> [REVENUE STATS] Pending Revenue: {}", rev);
-                    return rev;
-                },
+                () -> isGlobalAdmin ? paymentRepository.getGlobalTotalPendingRevenueIn(start.minusYears(5), end)
+                                : paymentRepository.getTotalPendingRevenueIn(userIdList, start.minusYears(5), end),
                 BigDecimal.ZERO);
         CompletableFuture<BigDecimal> forecastRevenueFuture = safeAsync(
                 () -> (isGlobalAdmin || userIdList.isEmpty()) ? BigDecimal.ZERO
@@ -531,7 +515,6 @@ public class DashboardStatsService {
                 .performance(performance)
                 .dailyTrend(new ArrayList<>(trendMap.values())).build();
 
-        log.info(">>> [DASHBOARD STATS] Final stats assembled - Presents: {}, Revenue: {}", stats.getPresentCount(), stats.getMonthlyRevenue());
         return stats;
     }
 

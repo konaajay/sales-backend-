@@ -18,6 +18,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Component
+@lombok.extern.slf4j.Slf4j
 public class DataInitializer implements CommandLineRunner {
 
     @Autowired
@@ -95,7 +96,6 @@ public class DataInitializer implements CommandLineRunner {
                     .active(true)
                     .build();
             userRepository.save(admin);
-            System.out.println(">>> [INIT] Default ADMIN created: " + adminEmail);
         } else {
             User admin = existingAdmin.get();
             admin.setPassword(passwordEncoder.encode(adminPassword));
@@ -103,7 +103,6 @@ public class DataInitializer implements CommandLineRunner {
             admin.setActive(true);
             admin.setRole(adminRole);
             userRepository.save(admin);
-            System.out.println(">>> [INIT] Existing ADMIN password and scope force-synced: " + adminEmail);
         }
 
         // 4. Optimized Cleanup
@@ -117,7 +116,6 @@ public class DataInitializer implements CommandLineRunner {
                     }
                 });
                 permissionRepository.delete(p);
-                System.out.println("Purged deprecated permission: " + pName);
             }
         }
     }

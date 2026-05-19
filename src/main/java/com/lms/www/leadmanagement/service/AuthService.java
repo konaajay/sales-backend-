@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 import java.util.Map;
 import java.util.Random;
 
+@lombok.extern.slf4j.Slf4j
 @Service
 @Transactional
 public class AuthService {
@@ -86,24 +87,20 @@ public class AuthService {
 
         @Transactional
         public void processForgotPassword(String email) {
-                System.out.println("[AUTH] Forgot password request for: " + email);
                 User user = userRepository.findByEmail(email).orElse(null);
                 if (user != null && user.isActive()) {
                         String otp = String.format("%06d", new Random().nextInt(999999));
                         user.setResetOtp(otp);
                         user.setResetOtpExpiry(LocalDateTime.now().plusMinutes(15));
                         userRepository.save(user);
-                        System.out.println("[AUTH] OTP generated and saved for " + email + ": " + otp);
                         
                         // Send the OTP via email
-                        System.out.println("[AUTH] PREPARING TO CALL MAIL SERVICE FOR: " + email);
                         mailService.sendOtp(email, otp, user.getName());
-                        System.out.println("[AUTH] MAIL SERVICE CALL COMPLETED FOR: " + email);
                 } else if (user != null && !user.isActive()) {
-                        System.err.println("[AUTH] Forgot password failed: Account inactive for " + email);
+                        log.warn("Forgot password failed: Account inactive for {}", email);
                         throw new RuntimeException("Your account is inactive. Please contact Admin.");
                 } else {
-                        System.err.println("[AUTH] Forgot password failed: Email not found: " + email);
+                        log.warn("Forgot password failed: Email not found: {}", email);
                         throw new RuntimeException("Email not found in our registry.");
                 }
         }

@@ -4,6 +4,7 @@ import com.lms.www.leadmanagement.dto.ApiResponse;
 import com.lms.www.leadmanagement.entity.Payment;
 import com.lms.www.leadmanagement.repository.PaymentRepository;
 import com.lms.www.leadmanagement.service.RevenueTargetService;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -15,8 +16,8 @@ import java.time.LocalDateTime;
 import java.util.*;
 
 @RestController
-@CrossOrigin(origins = "*", maxAge = 3600)
 @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'TEAM_LEADER')")
+@Slf4j
 public class RevenueTargetController {
 
     @Autowired
@@ -51,11 +52,10 @@ public class RevenueTargetController {
     @PostMapping("/api/targets/bulk")
     public ResponseEntity<ApiResponse<?>> bulkSetTargets(@RequestBody List<Map<String, Object>> payloads) {
         try {
-            System.out.println("[TARGET-DEBUG] Received bulk payload: " + payloads.size() + " items");
             targetService.bulkSetTargets(payloads);
             return ResponseEntity.ok(ApiResponse.success("Targets versioned and saved successfully"));
         } catch (Exception e) {
-            System.err.println("[TARGET-ERROR] Failed to save bulk targets: " + e.getMessage());
+            log.error("[TARGET-ERROR] Failed to save bulk targets: {}", e.getMessage(), e);
             return ResponseEntity.badRequest().body(ApiResponse.error(e.getMessage()));
         }
     }
@@ -101,7 +101,6 @@ public class RevenueTargetController {
 
     @GetMapping("/api/targets/ping")
     public ResponseEntity<String> ping() {
-        System.out.println("[TARGET-PING] Connectivity verified");
         return ResponseEntity.ok("pong");
     }
 }

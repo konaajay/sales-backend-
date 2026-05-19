@@ -1,10 +1,8 @@
 package com.lms.www.leadmanagement.mapper;
 
 import com.lms.www.leadmanagement.dto.AttendanceDTO;
-import com.lms.www.leadmanagement.dto.AttendancePolicyDTO;
 import com.lms.www.leadmanagement.dto.OfficeLocationDTO;
 import com.lms.www.leadmanagement.entity.AttendanceSession;
-import com.lms.www.leadmanagement.entity.AttendancePolicy;
 import com.lms.www.leadmanagement.entity.OfficeLocation;
 import java.time.LocalDate;
 import org.springframework.stereotype.Component;
@@ -12,35 +10,35 @@ import org.springframework.stereotype.Component;
 @Component
 public class AttendanceMapper {
 
-    public AttendanceDTO toDTO(AttendanceSession s, AttendancePolicy policy, int dayWorkMinutes, String dayWorkHours,
+    public AttendanceDTO toDTO(AttendanceSession s, int dayWorkMinutes, String dayWorkHours,
             LocalDate date) {
         if (s == null)
             return null;
 
         OfficeLocation office = s.getOffice();
 
-        int trackingInterval = (policy != null && policy.getTrackingIntervalSec() != null)
-                ? policy.getTrackingIntervalSec()
+        int trackingInterval = (office != null && office.getTrackingIntervalSec() != null)
+                ? office.getTrackingIntervalSec()
                 : 300;
         
         String sBreakStart = (s.getUser().getShift() != null && s.getUser().getShift().getShortBreakStartTime() != null)
                 ? s.getUser().getShift().getShortBreakStartTime().toString()
-                : (policy != null && policy.getShortBreakStartTime() != null ? policy.getShortBreakStartTime().toString() : "17:00");
+                : "17:00";
         String sBreakEnd = (s.getUser().getShift() != null && s.getUser().getShift().getShortBreakEndTime() != null)
                 ? s.getUser().getShift().getShortBreakEndTime().toString()
-                : (policy != null && policy.getShortBreakEndTime() != null ? policy.getShortBreakEndTime().toString() : "17:10");
+                : "17:10";
         String lBreakStart = (s.getUser().getShift() != null && s.getUser().getShift().getLongBreakStartTime() != null)
                 ? s.getUser().getShift().getLongBreakStartTime().toString()
-                : (policy != null && policy.getLongBreakStartTime() != null ? policy.getLongBreakStartTime().toString() : "13:00");
+                : "13:00";
         String lBreakEnd = (s.getUser().getShift() != null && s.getUser().getShift().getLongBreakEndTime() != null)
                 ? s.getUser().getShift().getLongBreakEndTime().toString()
-                : (policy != null && policy.getLongBreakEndTime() != null ? policy.getLongBreakEndTime().toString() : "14:00");
+                : "14:00";
 
         String shiftStart = (s.getUser().getShift() != null) ? s.getUser().getShift().getStartTime().toString()
-                : (policy != null && policy.getShiftStartTime() != null ? policy.getShiftStartTime().toString() : "00:00");
+                : "09:30";
         String shiftEnd = (s.getUser().getShift() != null) ? s.getUser().getShift().getEndTime().toString()
-                : (policy != null && policy.getShiftEndTime() != null ? policy.getShiftEndTime().toString() : "23:59");
-        int gracePeriod = (policy != null && policy.getGracePeriodMinutes() != null) ? policy.getGracePeriodMinutes()
+                : "18:30";
+        int gracePeriod = (s.getUser().getShift() != null) ? s.getUser().getShift().getGraceMinutes()
                 : 2;
         double radius = (office != null && office.getRadius() != null) ? office.getRadius() : 200.0;
 
@@ -91,7 +89,7 @@ public class AttendanceMapper {
             return null;
         int mins = (int)((s.getTotalWorkSeconds() != null ? s.getTotalWorkSeconds() : 0L) / 60);
         String hours = String.format("%dh %dm", mins / 60, mins % 60);
-        return toDTO(s, null, mins, hours, s.getCheckInTime() != null ? s.getCheckInTime().toLocalDate() : LocalDate.now());
+        return toDTO(s, mins, hours, s.getCheckInTime() != null ? s.getCheckInTime().toLocalDate() : LocalDate.now());
     }
 
     public OfficeLocationDTO toDTO(OfficeLocation o) {
@@ -103,28 +101,6 @@ public class AttendanceMapper {
                 .latitude(o.getLatitude())
                 .longitude(o.getLongitude())
                 .radius(o.getRadius())
-                .build();
-    }
-
-    public AttendancePolicyDTO toDTO(AttendancePolicy p) {
-        if (p == null)
-            return null;
-        return AttendancePolicyDTO.builder()
-                .id(p.getId())
-                .officeId(p.getOffice() != null ? p.getOffice().getId() : null)
-                .officeName(p.getOffice() != null ? p.getOffice().getName() : null)
-                .shortBreakStartTime(p.getShortBreakStartTime() != null ? p.getShortBreakStartTime().toString() : null)
-                .shortBreakEndTime(p.getShortBreakEndTime() != null ? p.getShortBreakEndTime().toString() : null)
-                .longBreakStartTime(p.getLongBreakStartTime() != null ? p.getLongBreakStartTime().toString() : null)
-                .longBreakEndTime(p.getLongBreakEndTime() != null ? p.getLongBreakEndTime().toString() : null)
-                .gracePeriodMinutes(p.getGracePeriodMinutes())
-                .trackingIntervalSec(p.getTrackingIntervalSec())
-                .maxAccuracyMeters(p.getMaxAccuracyMeters())
-                .minimumWorkMinutes(p.getMinimumWorkMinutes())
-                .maxIdleMinutes(p.getMaxIdleMinutes())
-                .halfDayMinutes(p.getHalfDayMinutes())
-                .shiftStartTime(p.getShiftStartTime() != null ? p.getShiftStartTime().toString() : null)
-                .shiftEndTime(p.getShiftEndTime() != null ? p.getShiftEndTime().toString() : null)
                 .build();
     }
 }

@@ -14,6 +14,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+@lombok.extern.slf4j.Slf4j
 @Component
 public class SessionActivityFilter extends OncePerRequestFilter {
 
@@ -31,8 +32,7 @@ public class SessionActivityFilter extends OncePerRequestFilter {
 
             boolean active = userSessionService.updateActivity(userDetails.getId());
             if (!active) {
-                System.out.println(">>> [SESSION_WARNING] No active/fresh DB session for user " + userDetails.getId()
-                        + ". Proceeding with JWT-only auth.");
+                log.warn("No active/fresh DB session for user {}. Proceeding with JWT-only auth.", userDetails.getId());
             }
         }
 

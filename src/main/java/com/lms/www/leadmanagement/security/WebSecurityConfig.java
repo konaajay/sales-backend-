@@ -21,6 +21,7 @@ import java.util.List;
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
+@lombok.extern.slf4j.Slf4j
 public class WebSecurityConfig {
 
     @org.springframework.beans.factory.annotation.Value("${app.frontend-url}")
@@ -86,8 +87,7 @@ public class WebSecurityConfig {
                 .exceptionHandling(ex -> ex
 
                         .authenticationEntryPoint((req, res, e) -> {
-                            System.err.println("[SECURITY] 401 Unauthorized for: " + req.getRequestURI() + " | Error: "
-                                    + e.getMessage());
+                            log.warn("[SECURITY] 401 Unauthorized for: {} | Error: {}", req.getRequestURI(), e.getMessage());
                             res.setContentType("application/json");
                             res.setStatus(401);
                             res.getWriter()
@@ -95,8 +95,7 @@ public class WebSecurityConfig {
                         })
 
                         .accessDeniedHandler((req, res, e) -> {
-                            System.err.println("[SECURITY] 403 Forbidden for: " + req.getRequestURI() + " | Error: "
-                                    + e.getMessage());
+                            log.warn("[SECURITY] 403 Forbidden for: {} | Error: {}", req.getRequestURI(), e.getMessage());
                             res.setContentType("application/json");
                             res.setStatus(403);
                             res.getWriter()

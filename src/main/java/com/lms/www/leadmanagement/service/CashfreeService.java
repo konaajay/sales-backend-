@@ -45,8 +45,7 @@ public class CashfreeService {
                 getBaseUrl(), entity, CashfreeOrderResponse.class);
             CashfreeOrderResponse body = response.getBody();
             if (body != null) {
-                log.info(">>> Cashfree Order Created via {} using AppId: {}", getBaseUrl(), appId);
-                log.info(">>> Order: {}, SessionID: {}", body.getOrder_id(), body.getPayment_session_id());
+                log.info("Cashfree Order Created: OrderId={}, SessionId={}", body.getOrder_id(), body.getPayment_session_id());
             }
             return body;
         } catch (org.springframework.web.client.HttpStatusCodeException e) {

@@ -13,6 +13,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
+@lombok.extern.slf4j.Slf4j
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
@@ -27,9 +28,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             HttpServletResponse response,
             FilterChain filterChain)
             throws ServletException, IOException {
-        String authHeader = request.getHeader("Authorization");
-        // System.out.println("[TRACE] Incoming: " + request.getMethod() + " " + request.getRequestURI() + " | Auth: " + (authHeader != null ? "Present" : "Missing"));
-        
         try {
             String jwt = parseJwt(request);
 
@@ -47,14 +45,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             new WebAuthenticationDetailsSource().buildDetails(request));
 
                     SecurityContextHolder.getContext().setAuthentication(authentication);
-                    System.out.println("[SECURITY] Authenticated user: " + username + " for path: " + request.getRequestURI());
                 }
             } else if (jwt != null) {
-                System.err.println("[SECURITY] Invalid JWT token for path: " + request.getRequestURI());
+                log.warn("Invalid JWT token for path: {}", request.getRequestURI());
             }
 
         } catch (Exception ex) {
-            System.err.println("[SECURITY] JWT authentication failed for path " + request.getRequestURI() + ": " + ex.getMessage());
+            log.error("JWT authentication failed for path {}: {}", request.getRequestURI(), ex.getMessage());
         }
 
         filterChain.doFilter(request, response);

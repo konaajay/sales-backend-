@@ -2,9 +2,7 @@ package com.lms.www.leadmanagement.controller;
 
 import com.lms.www.leadmanagement.dto.ApiResponse;
 import com.lms.www.leadmanagement.dto.AttendanceDTO;
-import com.lms.www.leadmanagement.dto.AttendancePolicyDTO;
 import com.lms.www.leadmanagement.dto.OfficeLocationDTO;
-import com.lms.www.leadmanagement.entity.AttendancePolicy;
 import com.lms.www.leadmanagement.entity.AttendanceShift;
 
 import com.lms.www.leadmanagement.entity.OfficeLocation;
@@ -65,31 +63,6 @@ public class AdminAttendanceController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<Void>> deleteOffice(@PathVariable Long id) {
         attendancePolicyService.deleteOffice(id);
-        return ResponseEntity.ok(ApiResponse.success(null));
-    }
-
-    // Policy Management
-    @GetMapping("/policies")
-    public ResponseEntity<ApiResponse<List<AttendancePolicyDTO>>> getPolicies() {
-        return ResponseEntity.ok(ApiResponse.success(attendancePolicyService.getAllPolicies()));
-    }
-
-    @PostMapping("/policies")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<ApiResponse<AttendancePolicy>> createPolicy(@RequestBody AttendancePolicyDTO dto) {
-        return ResponseEntity.ok(ApiResponse.success(attendancePolicyService.createPolicy(dto)));
-    }
-
-    @PutMapping("/policies/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
-    public ResponseEntity<ApiResponse<AttendancePolicy>> updatePolicy(@PathVariable Long id, @RequestBody AttendancePolicyDTO dto) {
-        return ResponseEntity.ok(ApiResponse.success(attendancePolicyService.updatePolicy(id, dto)));
-    }
-
-    @DeleteMapping("/policies/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<ApiResponse<Void>> deletePolicy(@PathVariable Long id) {
-        attendancePolicyService.deletePolicy(id);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 

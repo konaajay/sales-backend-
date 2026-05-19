@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @EqualsAndHashCode(onlyExplicitlyIncluded = true)
-@ToString(exclude = { "manager", "supervisor", "directReports", "managedSubordinates", "password" })
+@ToString(exclude = { "manager", "supervisor", "directReports", "managedSubordinates", "password", "directPermissions" })
 public class User {
 
     @Id
@@ -71,15 +71,20 @@ public class User {
 
     // private java.math.BigDecimal monthlyTarget;
 
-    @Builder.Default
-    @ManyToMany(fetch = FetchType.EAGER)
-    @JoinTable(name = "user_direct_permissions", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "permission_id"))
-    private java.util.Set<Permission> directPermissions = new java.util.HashSet<>();
-
     private LocalDateTime createdAt;
 
     @Builder.Default
     private boolean active = true;
+
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(
+        name = "user_direct_permissions",
+        joinColumns = @JoinColumn(name = "user_id"),
+        inverseJoinColumns = @JoinColumn(name = "permission_id")
+    )
+    @Builder.Default
+    @JsonIgnore
+    private java.util.Set<Permission> directPermissions = new java.util.HashSet<>();
 
     private String resetOtp;
     private LocalDateTime resetOtpExpiry;

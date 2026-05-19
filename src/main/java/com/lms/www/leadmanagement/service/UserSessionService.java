@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.Optional;
 
+@lombok.extern.slf4j.Slf4j
 @Service
 public class UserSessionService {
 
@@ -76,9 +77,6 @@ public class UserSessionService {
     public void autoLogoutStaleSessions() {
         LocalDateTime now = LocalDateTime.now(INDIA_ZONE);
         LocalDateTime cutoff = now.minusMinutes(30);
-        int closed = userSessionRepository.closeIdleSessions(cutoff, now);
-        if (closed > 0) {
-            System.out.println("Auto-logged out " + closed + " idle sessions.");
-        }
+        userSessionRepository.closeIdleSessions(cutoff, now);
     }
 }

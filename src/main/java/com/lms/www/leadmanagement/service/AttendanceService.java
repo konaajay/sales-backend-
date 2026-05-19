@@ -21,7 +21,6 @@ public class AttendanceService {
     private final AttendanceSessionRepository sessionRepository;
     private final AttendanceDailyRepository dailyRepository;
     private final OfficeLocationRepository officeRepository;
-    private final AttendancePolicyRepository policyRepository;
     private final UserRepository userRepository;
     private final SecurityService securityService;
     private final AttendanceShiftRepository shiftRepository;
@@ -77,17 +76,15 @@ public class AttendanceService {
             throw new RuntimeException("PUNCH DENIED: You are " + distStr + " away from the office radius (" + office.getRadius() + "m). You do not have WFH approval.");
         }
 
-        AttendancePolicy policy = policyRepository.findByOfficeId(office.getId()).orElseGet(() -> AttendancePolicy.builder().office(office).build());
-        
         LocalDateTime now = nowInIndia();
-        LocalTime shiftStart = (user.getShift() != null) ? user.getShift().getStartTime() : policy.getShiftStartTime();
-        int grace = (user.getShift() != null) ? user.getShift().getGraceMinutes() : (policy.getGracePeriodMinutes() != null ? policy.getGracePeriodMinutes() : 0);
+        LocalTime shiftStart = (user.getShift() != null) ? user.getShift().getStartTime() : LocalTime.of(9, 30);
+        int grace = (user.getShift() != null) ? user.getShift().getGraceMinutes() : 0;
         
         boolean isLate = now.toLocalTime().isAfter(shiftStart.plusMinutes(grace));
         int lateMins = 0;
         if (isLate) {
             long totalLateMins = Duration.between(shiftStart, now.toLocalTime()).toMinutes();
-            long breakOverlapMins = calculateBreakOverlap(shiftStart, now.toLocalTime(), policy, user.getShift());
+            long breakOverlapMins = calculateBreakOverlap(shiftStart, now.toLocalTime(), user.getShift());
             lateMins = (int) Math.max(0, totalLateMins - breakOverlapMins);
         }
 
@@ -108,19 +105,18 @@ public class AttendanceService {
         LocalDateTime now = nowInIndia();
         User user = session.getUser();
         AttendanceShift shift = user.getShift();
-        AttendancePolicy policy = policyRepository.findByOfficeId(session.getOffice().getId()).orElseGet(() -> AttendancePolicy.builder().office(session.getOffice()).build());
 
         boolean wfh = isWfhApproved(session.getUser().getId());
         boolean inside = wfh || calculateDistance(request.getLat(), request.getLng(), session.getOffice().getLatitude(), session.getOffice().getLongitude()) <= session.getOffice().getRadius();
 
-        LocalTime shiftEnd = (shift != null) ? shift.getEndTime() : (policy.getShiftEndTime() != null ? policy.getShiftEndTime() : LocalTime.of(18, 30));
+        LocalTime shiftEnd = (shift != null) ? shift.getEndTime() : LocalTime.of(18, 30);
         
         // Strategic: Force checkout if more than 30 mins after shift end OR if shift ended and user is outside
         if (now.toLocalTime().isAfter(shiftEnd.plusMinutes(30)) || (now.toLocalTime().isAfter(shiftEnd) && !inside)) {
             finalizeSession(session, now, true);
             return mapToDTO(session, todayInIndia());
         } 
-        resolveStateAndAccumulateTime(session, policy, shift, now, inside);
+        resolveStateAndAccumulateTime(session, shift, now, inside);
         session.setLastLat(request.getLat());
         session.setLastLng(request.getLng());
         session.setLastSeenTime(now);
@@ -129,7 +125,7 @@ public class AttendanceService {
         return mapToDTO(savedSession, todayInIndia());
     }
 
-    private void resolveStateAndAccumulateTime(AttendanceSession session, AttendancePolicy policy, AttendanceShift shift, LocalDateTime now, boolean inside) {
+    private void resolveStateAndAccumulateTime(AttendanceSession session, AttendanceShift shift, LocalDateTime now, boolean inside) {
         LocalDateTime lastPing = session.getLastSeenTime();
         long segmentSecs = Duration.between(lastPing, now).toSeconds();
         if (segmentSecs <= 0) return;
@@ -147,7 +143,7 @@ public class AttendanceService {
         if (current == AttendanceStatus.ON_BREAK) return;
 
         LocalTime time = now.toLocalTime();
-        if (isInsideAutoBreakWindow(time, policy, shift)) {
+        if (isInsideAutoBreakWindow(time, shift)) {
             session.setStatus(AttendanceStatus.AUTO_BREAK);
         } else if (!inside) {
             session.setStatus(AttendanceStatus.OUTSIDE);
@@ -156,11 +152,11 @@ public class AttendanceService {
         }
     }
 
-    private boolean isInsideAutoBreakWindow(LocalTime time, AttendancePolicy policy, AttendanceShift shift) {
-        LocalTime lStart = (shift != null && shift.getLongBreakStartTime() != null) ? shift.getLongBreakStartTime() : (policy != null ? policy.getLongBreakStartTime() : null);
-        LocalTime lEnd = (shift != null && shift.getLongBreakEndTime() != null) ? shift.getLongBreakEndTime() : (policy != null ? policy.getLongBreakEndTime() : null);
-        LocalTime sStart = (shift != null && shift.getShortBreakStartTime() != null) ? shift.getShortBreakStartTime() : (policy != null ? policy.getShortBreakStartTime() : null);
-        LocalTime sEnd = (shift != null && shift.getShortBreakEndTime() != null) ? shift.getShortBreakEndTime() : (policy != null ? policy.getShortBreakEndTime() : null);
+    private boolean isInsideAutoBreakWindow(LocalTime time, AttendanceShift shift) {
+        LocalTime lStart = (shift != null && shift.getLongBreakStartTime() != null) ? shift.getLongBreakStartTime() : LocalTime.of(13, 0);
+        LocalTime lEnd = (shift != null && shift.getLongBreakEndTime() != null) ? shift.getLongBreakEndTime() : LocalTime.of(14, 0);
+        LocalTime sStart = (shift != null && shift.getShortBreakStartTime() != null) ? shift.getShortBreakStartTime() : LocalTime.of(17, 0);
+        LocalTime sEnd = (shift != null && shift.getShortBreakEndTime() != null) ? shift.getShortBreakEndTime() : LocalTime.of(17, 10);
 
         if (lStart != null && lEnd != null && !time.isBefore(lStart) && time.isBefore(lEnd)) return true;
         if (sStart != null && sEnd != null && !time.isBefore(sStart) && time.isBefore(sEnd)) return true;
@@ -252,7 +248,6 @@ public class AttendanceService {
         long workMins = session.getTotalWorkSeconds() / 60;
         User user = session.getUser();
         AttendanceShift shift = user.getShift();
-        AttendancePolicy policy = policyRepository.findByOfficeId(session.getOffice().getId()).orElse(null);
 
         int minFullDay = 480;
         int minHalfDay = 240;
@@ -260,9 +255,6 @@ public class AttendanceService {
         if (shift != null) {
             minFullDay = shift.getMinFullDayMinutes();
             minHalfDay = shift.getMinHalfDayMinutes();
-        } else if (policy != null) {
-            minFullDay = policy.getMinimumWorkMinutes() != null ? policy.getMinimumWorkMinutes() : 480;
-            minHalfDay = policy.getHalfDayMinutes() != null ? policy.getHalfDayMinutes() : 240;
         }
 
         if (workMins >= minFullDay) daily.setStatus("PRESENT");
@@ -374,20 +366,20 @@ public class AttendanceService {
                 .build();
     }
 
-    private long calculateBreakOverlap(LocalTime start, LocalTime end, AttendancePolicy policy, AttendanceShift shift) {
+    private long calculateBreakOverlap(LocalTime start, LocalTime end, AttendanceShift shift) {
         long overlapMins = 0;
         
         // 1. Determine Long Break (Lunch) Window
-        LocalTime lStart = (shift != null && shift.getLongBreakStartTime() != null) ? shift.getLongBreakStartTime() : (policy != null ? policy.getLongBreakStartTime() : LocalTime.of(13, 0));
-        LocalTime lEnd = (shift != null && shift.getLongBreakEndTime() != null) ? shift.getLongBreakEndTime() : (policy != null ? policy.getLongBreakEndTime() : LocalTime.of(14, 0));
+        LocalTime lStart = (shift != null && shift.getLongBreakStartTime() != null) ? shift.getLongBreakStartTime() : LocalTime.of(13, 0);
+        LocalTime lEnd = (shift != null && shift.getLongBreakEndTime() != null) ? shift.getLongBreakEndTime() : LocalTime.of(14, 0);
         
         if (lStart != null && lEnd != null) {
             overlapMins += getIntervalOverlap(start, end, lStart, lEnd);
         }
         
         // 2. Determine Short Break Window
-        LocalTime sStart = (shift != null && shift.getShortBreakStartTime() != null) ? shift.getShortBreakStartTime() : (policy != null ? policy.getShortBreakStartTime() : null);
-        LocalTime sEnd = (shift != null && shift.getShortBreakEndTime() != null) ? shift.getShortBreakEndTime() : (policy != null ? policy.getShortBreakEndTime() : null);
+        LocalTime sStart = (shift != null && shift.getShortBreakStartTime() != null) ? shift.getShortBreakStartTime() : LocalTime.of(17, 0);
+        LocalTime sEnd = (shift != null && shift.getShortBreakEndTime() != null) ? shift.getShortBreakEndTime() : LocalTime.of(17, 10);
         
         if (sStart != null && sEnd != null) {
             overlapMins += getIntervalOverlap(start, end, sStart, sEnd);

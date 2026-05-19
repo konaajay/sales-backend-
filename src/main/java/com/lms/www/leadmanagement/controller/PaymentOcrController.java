@@ -9,7 +9,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*") // Adjust in production
 public class PaymentOcrController {
 
     private final PaymentOcrService ocrService;
@@ -26,11 +25,6 @@ public class PaymentOcrController {
         }
 
         OcrResponseDTO response = ocrService.extractPaymentData(file);
-        
-        if (response.isSuccess()) {
-            return ResponseEntity.ok(response);
-        } else {
-            return ResponseEntity.status(500).body(response);
-        }
+        return ResponseEntity.ok(response);
     }
 }

@@ -35,8 +35,7 @@ public class RevenueTargetService {
         
         securityService.validateHierarchyAccess(currentUser, targetUser);
         
-        log.info("[TARGET-SYNC] Upserting target: User={}, Amount={}, AssignedBy={}", 
-            userId, amount, currentUser.getEmail());
+
 
         RevenueTarget target = targetRepository.findTopByUserIdAndMonthAndYearAndTypeAndAssignedByOrderByIdDesc(
                 userId, month, year, TargetType.ASSIGNED, currentUser.getId()).orElse(new RevenueTarget());
@@ -59,8 +58,6 @@ public class RevenueTargetService {
     public void bulkSetTargets(List<Map<String, Object>> payloads) {
         User currentUser = securityService.getCurrentUser();
         if (payloads == null || payloads.isEmpty()) return;
-
-        log.info("[TARGET-BULK] Starting versioned sync for {} items by {}", payloads.size(), currentUser.getEmail());
 
         // 1. Strategic Parity Enforcement
         if (securityService.isTeamLeader(currentUser)) {
@@ -95,8 +92,6 @@ public class RevenueTargetService {
                 User targetUser = userRepository.findById(userId)
                         .orElseThrow(() -> new RuntimeException("User not found: " + userId));
 
-                log.info("[TARGET-BULK] Upserting: User={}, Amount={}, Type={}", userId, amount, type);
-
                 RevenueTarget target = targetRepository.findTopByUserIdAndMonthAndYearAndTypeAndAssignedByOrderByIdDesc(
                         userId, month, year, type, currentUser.getId()).orElse(new RevenueTarget());
 
@@ -118,7 +113,6 @@ public class RevenueTargetService {
             }
         }
         targetRepository.flush();
-        log.info("[TARGET-BULK] DB Flush Complete");
     }
 
     @Transactional(readOnly = true)

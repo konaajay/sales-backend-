@@ -12,6 +12,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
+@lombok.extern.slf4j.Slf4j
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
@@ -24,15 +25,11 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@RequestBody LoginRequest loginRequest, HttpServletRequest request) {
-        System.out.println("[AUTH] Login attempt for user: " + loginRequest.getEmail());
         try {
             AuthResponse response = authService.authenticateUser(loginRequest, request);
-            System.out.println("[AUTH] Login successful for: " + loginRequest.getEmail());
-            System.out.println("[AUTH] Role in Response: " + response.getRole());
-            System.out.println("[AUTH] User ID: " + response.getId());
             return ResponseEntity.ok(response);
         } catch (Exception e) {
-            System.err.println("[AUTH] Login failed for: " + loginRequest.getEmail() + " | Reason: " + e.getMessage());
+            log.error("Login failed for: {} | Reason: {}", loginRequest.getEmail(), e.getMessage());
             throw e;
         }
     }

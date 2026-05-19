@@ -25,8 +25,6 @@ public class LeadTaskScheduler {
     @Scheduled(cron = "0 0/30 * * * *")
     @Transactional
     public void checkOverdueTasks() {
-        log.info(">>> Running Lead Task Overdue Check at {}", LocalDateTime.now());
-        
         LocalDateTime now = LocalDateTime.now();
         List<LeadTask> tasks = taskRepository.findByStatusInAndDueDateBefore(
             List.of(LeadTask.TaskStatus.PENDING, LeadTask.TaskStatus.RESCHEDULED),
@@ -41,7 +39,7 @@ public class LeadTaskScheduler {
         }
         
         if (count > 0) {
-            log.info(">>> Marked {} lead tasks as OVERDUE", count);
+            log.info("Marked {} lead tasks as OVERDUE", count);
         }
     }
 }

@@ -158,7 +158,6 @@ public class PaymentController {
 
     @GetMapping({"/session/{orderId}", "/fetch-order/{orderId}"})
     public ResponseEntity<?> fetchOrder(@PathVariable String orderId) {
-        log.info("Gateway session fetch for Order: {}", orderId);
         return ResponseEntity.ok(leadPaymentService.fetchCashfreeOrder(orderId));
     }
 
@@ -181,10 +180,6 @@ public class PaymentController {
             @RequestHeader(value = "x-cf-timestamp", required = false) String timestamp,
             @RequestHeader Map<String, String> headers) {
         
-        log.info("========== CASHFREE WEBHOOK HIT ==========");
-        log.info("Headers: {}", headers);
-        log.info("Payload: {}", payload);
-
         if (payload == null || payload.isBlank()) {
             return ResponseEntity.ok("OK");
         }
@@ -199,7 +194,6 @@ public class PaymentController {
                     log.error("CRITICAL: Invalid Webhook Signature detected!");
                     return ResponseEntity.status(401).body("Invalid Signature");
                 }
-                log.info("Webhook Signature Verified successfully.");
             } catch (Exception e) {
                 log.error("Signature verification error: {}", e.getMessage());
                 // For safety in dev, we might continue, but in strict prod, we should reject
@@ -231,15 +225,9 @@ public class PaymentController {
                     if (p != null) {
                         if ("SUCCESS".equals(paymentStatus) && p.getStatus() != com.lms.www.leadmanagement.entity.Payment.Status.PAID) {
                             leadPaymentService.updatePaymentStatus(p.getId(), "PAID", method, "Cashfree Webhook Success", amount, null);
-                            log.info("Webhook: Updated payment {} to PAID.", p.getId());
                         } else if ("FAILED".equals(paymentStatus) && p.getStatus() == com.lms.www.leadmanagement.entity.Payment.Status.PENDING) {
                             leadPaymentService.updatePaymentStatus(p.getId(), "FAILED", method, "Cashfree Webhook Reported Failure", amount, null);
-                            log.info("Webhook: Updated payment {} to FAILED.", p.getId());
-                        } else {
-                            log.info("Webhook: No update needed for order {}. Current status: {}, Gateway status: {}", gatewayOrderId, p.getStatus(), paymentStatus);
                         }
-                    } else {
-                        log.info("Webhook: Payment record not found for order {}", gatewayOrderId);
                     }
                 }
             }
@@ -292,7 +280,6 @@ public class PaymentController {
             
             if (sessionId != null && !sessionId.isBlank()) {
                 response.put("payment_session_id", sessionId);
-                log.info("Successfully attached Payment Session ID for Order: {}", orderId);
             } else {
                 log.warn("Cashfree Order found but NO payment_session_id returned for Order: {}", orderId);
                 response.put("error", "No active payment session found in gateway. Session may have expired.");

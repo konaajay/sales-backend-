@@ -65,7 +65,6 @@ public class AdminService {
 
     @Transactional
     public UserDTO updateUser(Long id, UserDTO dto) {
-        log.info("Updating user {} with data: {}", id, dto);
         User requester = securityService.getCurrentUser();
         securityService.validateAccess(requester, id);
 
@@ -105,8 +104,6 @@ public class AdminService {
         user.setActive(dto.isActive());
         
         User savedUser = userRepository.save(user);
-        log.info("User {} updated successfully. Assigned Office: {}", id, 
-            savedUser.getAssignedOffice() != null ? savedUser.getAssignedOffice().getName() : "None");
             
         return UserDTO.fromEntity(savedUser);
     }

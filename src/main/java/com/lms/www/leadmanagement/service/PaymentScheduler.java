@@ -34,8 +34,6 @@ public class PaymentScheduler {
     @Scheduled(cron = "0 0 * * * *")
     @Transactional
     public void checkOverduePayments() {
-        log.info(">>> Running Payment Overdue Check at {}", LocalDateTime.now());
-        
         List<Payment> pendingPayments = paymentRepository.findAllByStatus(Payment.Status.PENDING);
         LocalDateTime now = LocalDateTime.now();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
@@ -58,17 +56,16 @@ public class PaymentScheduler {
                                 payment.getAmount(), 
                                 formattedDate
                             );
-                            log.info(">>> Automated Overdue Reminder sent to student: {}", lead.getEmail());
                         }
                     });
                 } catch (Exception e) {
-                    log.error(">>> FAILED to send automated overdue reminder for payment ID: {}", payment.getId(), e);
+                    log.error("FAILED to send automated overdue reminder for payment ID: {}", payment.getId(), e);
                 }
             }
         }
         
         if (count > 0) {
-            log.info(">>> Marked {} payments as OVERDUE and triggered reminders", count);
+            log.info("Marked {} payments as OVERDUE and triggered reminders", count);
         }
     }
 }

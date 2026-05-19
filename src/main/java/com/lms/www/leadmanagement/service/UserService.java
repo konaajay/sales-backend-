@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 @Service
+@lombok.extern.slf4j.Slf4j
 public class UserService {
 
     private final UserRepository userRepository;
@@ -97,7 +98,7 @@ public class UserService {
         try {
             mailService.sendUserCredentials(saved.getEmail(), dto.getPassword(), saved.getName());
         } catch (Exception e) {
-            System.err.println("[MAIL] Failed to send credentials to " + saved.getEmail() + ": " + e.getMessage());
+            log.error("Failed to send credentials to {}: {}", saved.getEmail(), e.getMessage());
         }
 
         return UserDTO.fromEntity(saved);

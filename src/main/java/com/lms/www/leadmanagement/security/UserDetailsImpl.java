@@ -11,6 +11,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.HashSet;
 
+@lombok.extern.slf4j.Slf4j
 public class UserDetailsImpl implements UserDetails {
     private static final long serialVersionUID = 1L;
 
@@ -38,12 +39,9 @@ public class UserDetailsImpl implements UserDetails {
                 .replace(" ", "");
             String roleName = "ROLE_" + normalizedRole;
             authorities.add(new SimpleGrantedAuthority(roleName));
-            System.out.println("[AUTH-GRANT] Raw DB Role: " + user.getRole().getName());
-            System.out.println("[AUTH-GRANT] Granted Normalized Authority: " + roleName);
             if (user.getRole().getPermissions() != null) {
                 user.getRole().getPermissions().forEach(p -> {
                     authorities.add(new SimpleGrantedAuthority(p.getName()));
-                    System.out.println("[AUTH-GRANT] Granted Permission: " + p.getName());
                 });
             }
         }

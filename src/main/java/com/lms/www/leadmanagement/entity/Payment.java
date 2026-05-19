@@ -54,6 +54,8 @@ public class Payment {
     private LocalDateTime updatedAt;
     @Builder.Default
     private boolean reminderSent = false;
+    @Builder.Default
+    private boolean dueDateReminderSent = false;
 
     @PrePersist
     protected void onCreate() {

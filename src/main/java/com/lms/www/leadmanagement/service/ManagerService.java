@@ -22,6 +22,7 @@ import java.util.stream.Collectors;
 
 import org.springframework.transaction.annotation.Transactional;
 
+@lombok.extern.slf4j.Slf4j
 @Service
 @Transactional
 public class ManagerService {
@@ -75,7 +76,7 @@ public class ManagerService {
         try {
             mailService.sendUserCredentials(savedUser.getEmail(), userDTO.getPassword(), savedUser.getName());
         } catch (Exception e) {
-            System.err.println("CRITICAL: Failed to send Team Leader credentials email: " + e.getMessage());
+            log.error("CRITICAL: Failed to send Team Leader credentials email for {}: {}", savedUser.getEmail(), e.getMessage());
         }
 
         return UserDTO.fromEntity(savedUser);
@@ -149,7 +150,7 @@ public class ManagerService {
         try {
             mailService.sendUserCredentials(savedUser.getEmail(), userDTO.getPassword(), savedUser.getName());
         } catch (Exception e) {
-            System.err.println("CRITICAL: Failed to send user credentials email: " + e.getMessage());
+            log.error("CRITICAL: Failed to send user credentials email for {}: {}", savedUser.getEmail(), e.getMessage());
         }
 
         return UserDTO.fromEntity(savedUser);
@@ -231,7 +232,6 @@ public class ManagerService {
     }
 
     public UserDTO updateUser(Long id, UserDTO userDTO) {
-        System.out.println("Updating user " + id + " with data: " + userDTO);
         if (id == null) throw new IllegalArgumentException("User ID cannot be null");
         User curUser = securityService.getCurrentUser();
         securityService.validateAccess(curUser, id);
@@ -271,9 +271,6 @@ public class ManagerService {
         }
         
         if (userDTO.getPermissions() != null) {
-            System.out.println(">>> Updating permissions for user ID: " + user.getId() + " (" + user.getEmail() + ")");
-            System.out.println(">>> Requested Permissions: " + userDTO.getPermissions());
-
             java.util.Set<Permission> direct = new java.util.HashSet<>();
             for (String p : userDTO.getPermissions()) {
                 permissionRepository.findByName(p).ifPresent(direct::add);
@@ -282,23 +279,18 @@ public class ManagerService {
             boolean exactMatch = false;
             if (user.getRole() != null && user.getRole().getPermissions() != null) {
                 java.util.Set<String> rps = user.getRole().getPermissions().stream().map(Permission::getName).collect(Collectors.toSet());
-                System.out.println(">>> Role Permissions: " + rps);
                 if (rps.size() == direct.size() && rps.containsAll(userDTO.getPermissions())) {
                     exactMatch = true;
                 }
             }
             if (!exactMatch) {
-                System.out.println(">>> Result: DIRECT OVERRIDE applied.");
                 user.setDirectPermissions(direct);
             } else {
-                System.out.println(">>> Result: MATCHES ROLE, clearing overrides.");
                 user.getDirectPermissions().clear();
             }
         }
 
         User savedUser = userRepository.save(user);
-        System.out.println("User " + id + " updated successfully. Assigned Office: " + 
-            (savedUser.getAssignedOffice() != null ? savedUser.getAssignedOffice().getName() : "None"));
         return UserDTO.fromEntity(savedUser);
     }
 

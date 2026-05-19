@@ -13,7 +13,6 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 public class LeadManagementApplication {
 
     public static void main(String[] args) {
-        System.out.println("RELOADING: HISTORICAL TARGET ENGINE ACTIVATED...");
         SpringApplication.run(LeadManagementApplication.class, args);
     }
 }

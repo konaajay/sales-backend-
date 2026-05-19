@@ -26,7 +26,6 @@ public class MailService {
     private String frontendUrl;
 
     public void sendEmail(String to, String subject, String body) {
-        log.info("Attempting to send email to: {}", to);
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -36,7 +35,6 @@ public class MailService {
             helper.setText(body, true);
 
             mailSender.send(message);
-            log.info("Successfully sent email to: {}", to);
         } catch (Exception e) {
             log.error("Failed to send email to {}: {}", to, e.getMessage());
         }

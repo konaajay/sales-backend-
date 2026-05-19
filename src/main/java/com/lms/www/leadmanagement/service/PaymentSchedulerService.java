@@ -30,8 +30,7 @@ public class PaymentSchedulerService {
     @Scheduled(cron = "0 0 10 * * *")
     @Transactional
     public void processDailyInstallmentReminders() {
-        log.info(">>> Running Daily Installment Reminder Check at {}", LocalDateTime.now());
-                LocalDate tomorrow = LocalDate.now().plusDays(1);
+        LocalDate tomorrow = LocalDate.now().plusDays(1);
         LocalDateTime startRange = tomorrow.atStartOfDay();
         LocalDateTime endRange = tomorrow.atTime(LocalTime.MAX);
 
@@ -48,12 +47,35 @@ public class PaymentSchedulerService {
                 leadPaymentService.sendInstallmentReminder(payment);
                 count++;
             } catch (Exception e) {
-                log.error(">>> Failed to send installment reminder for Payment ID {}: {}", payment.getId(), e.getMessage());
+                log.error("Failed to send installment reminder for Payment ID {}: {}", payment.getId(), e.getMessage());
             }
         }
+    }
 
-        if (count > 0) {
-            log.info(">>> Successfully sent {} installment reminders today.", count);
+    /**
+     * Daily check for installments due TODAY (Same-day reminder).
+     * Runs at 10 AM daily.
+     */
+    @Scheduled(cron = "0 0 10 * * *")
+    @Transactional
+    public void processSameDayInstallmentReminders() {
+        LocalDate today = LocalDate.now();
+        LocalDateTime startRange = today.atStartOfDay();
+        LocalDateTime endRange = today.atTime(LocalTime.MAX);
+
+        // Find all PENDING installments due TODAY (Same-day reminder)
+        List<Payment> duePaymentsToday = paymentRepository.findByStatusInAndDueDateBetweenAndDueDateReminderSentFalse(
+                List.of(Payment.Status.PENDING, Payment.Status.OVERDUE),
+                startRange,
+                endRange
+        );
+
+        for (Payment payment : duePaymentsToday) {
+            try {
+                leadPaymentService.sendSameDayInstallmentReminder(payment);
+            } catch (Exception e) {
+                log.error("Failed to send same-day installment reminder for Payment ID {}: {}", payment.getId(), e.getMessage());
+            }
         }
     }
     
@@ -78,7 +100,7 @@ public class PaymentSchedulerService {
                 // Only send if it's been more than 24 hours since it was due and we haven't sent one
                 leadPaymentService.sendInstallmentReminder(payment);
             } catch (Exception e) {
-                log.error(">>> Fallback: Failed to send reminder for Payment ID {}: {}", payment.getId(), e.getMessage());
+                log.error("Fallback: Failed to send reminder for Payment ID {}: {}", payment.getId(), e.getMessage());
             }
         }
     }

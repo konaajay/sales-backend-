@@ -223,4 +223,9 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             java.util.Collection<Payment.Status> statuses,
             java.time.LocalDateTime start,
             java.time.LocalDateTime end);
+
+    List<Payment> findByStatusInAndDueDateBetweenAndDueDateReminderSentFalse(
+            java.util.Collection<Payment.Status> statuses,
+            java.time.LocalDateTime start,
+            java.time.LocalDateTime end);
 }

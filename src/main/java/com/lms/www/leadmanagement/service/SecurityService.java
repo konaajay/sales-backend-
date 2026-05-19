@@ -108,7 +108,6 @@ public class SecurityService {
             .replace(" ", "")
             .replace("_", "");
             
-        log.info("[ROLE-DEBUG] User: {}, RawRole: {}, Normalized: {}", user.getEmail(), user.getRole().getName(), roleName);
         return roleName;
     }
 
