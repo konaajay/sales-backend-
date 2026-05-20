@@ -38,4 +38,33 @@ public class FileStorageService {
             throw new RuntimeException("Could not store the file. Error: " + e.getMessage());
         }
     }
+    public String saveCertificate(String certificateId, byte[] data) {
+        try {
+            Path targetDir = root.resolve("certificates");
+            if (!Files.exists(targetDir)) {
+                Files.createDirectories(targetDir);
+            }
+            String filename = certificateId + ".pdf";
+            Path filePath = targetDir.resolve(filename);
+            Files.write(filePath, data);
+            return "certificates/" + filename;
+        } catch (Exception e) {
+            throw new RuntimeException("Could not store the certificate. Error: " + e.getMessage());
+        }
+    }
+
+    public byte[] getFile(String storagePath) {
+        try {
+            String cleanPath = storagePath;
+            if (cleanPath.startsWith("/uploads/")) {
+                cleanPath = cleanPath.substring("/uploads/".length());
+            } else if (cleanPath.startsWith("uploads/")) {
+                cleanPath = cleanPath.substring("uploads/".length());
+            }
+            Path filePath = root.resolve(cleanPath);
+            return Files.readAllBytes(filePath);
+        } catch (Exception e) {
+            throw new RuntimeException("Could not read the file. Error: " + e.getMessage());
+        }
+    }
 }

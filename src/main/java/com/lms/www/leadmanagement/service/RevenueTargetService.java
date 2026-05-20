@@ -32,14 +32,11 @@ public class RevenueTargetService {
         User currentUser = securityService.getCurrentUser();
         User targetUser = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
-        
+
         securityService.validateHierarchyAccess(currentUser, targetUser);
-        
-
-
         RevenueTarget target = targetRepository.findTopByUserIdAndMonthAndYearAndTypeAndAssignedByOrderByIdDesc(
                 userId, month, year, TargetType.ASSIGNED, currentUser.getId()).orElse(new RevenueTarget());
-        
+
         target.setUser(targetUser);
         target.setMonth(month);
         target.setYear(year);
@@ -50,30 +47,32 @@ public class RevenueTargetService {
         if (target.getId() == null) {
             target.setCreatedAt(LocalDateTime.now());
         }
-        
+
         return targetRepository.save(target);
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void bulkSetTargets(List<Map<String, Object>> payloads) {
         User currentUser = securityService.getCurrentUser();
-        if (payloads == null || payloads.isEmpty()) return;
+        if (payloads == null || payloads.isEmpty())
+            return;
 
         // 1. Strategic Parity Enforcement
         if (securityService.isTeamLeader(currentUser)) {
             Integer month = Integer.valueOf(payloads.get(0).get("month").toString());
             Integer year = Integer.valueOf(payloads.get(0).get("year").toString());
-            
+
             List<RevenueTarget> targets = targetRepository.findAssignedTarget(currentUser.getId(), month, year);
             BigDecimal assignedTarget = targets.isEmpty() ? BigDecimal.ZERO : targets.get(0).getTargetAmount();
-            
+
             BigDecimal totalDistributed = payloads.stream()
                     .map(p -> new BigDecimal(p.get("amount").toString()))
                     .reduce(BigDecimal.ZERO, BigDecimal::add);
-            
+
             if (assignedTarget.compareTo(BigDecimal.ZERO) > 0) {
                 if (assignedTarget.subtract(totalDistributed).abs().compareTo(new BigDecimal("1.0")) > 0) {
-                    throw new RuntimeException("Strategic Imbalance: Total allocation must match your assigned target.");
+                    throw new RuntimeException(
+                            "Strategic Imbalance: Total allocation must match your assigned target.");
                 }
             }
         }
@@ -85,7 +84,7 @@ public class RevenueTargetService {
                 BigDecimal amount = new BigDecimal(payload.get("amount").toString());
                 Integer month = Integer.valueOf(payload.get("month").toString());
                 Integer year = Integer.valueOf(payload.get("year").toString());
-                
+
                 String typeStr = payload.getOrDefault("type", "ASSIGNED").toString();
                 TargetType type = TargetType.valueOf(typeStr);
 
@@ -119,9 +118,10 @@ public class RevenueTargetService {
     public Map<String, Object> getTargetSummary(Long userId, Integer month, Integer year) {
         List<RevenueTarget> budgetTargets = targetRepository.findAssignedBudget(userId, month, year);
         BigDecimal assignedTarget = budgetTargets.isEmpty() ? BigDecimal.ZERO : budgetTargets.get(0).getTargetAmount();
-        
+
         BigDecimal distributed = targetRepository.getDistributedTotal(userId, month, year);
-        if (distributed == null) distributed = BigDecimal.ZERO;
+        if (distributed == null)
+            distributed = BigDecimal.ZERO;
 
         Map<String, Object> map = new HashMap<>();
         map.put("userId", userId);
@@ -139,8 +139,9 @@ public class RevenueTargetService {
 
         // Fetch latest targets per month/year regardless of type
         List<RevenueTarget> latestTargets = targetRepository.findAllByUserIdLatest(userId);
-        
-        // Group by month/year to handle potential overlaps, prioritizing self-assignment if it exists
+
+        // Group by month/year to handle potential overlaps, prioritizing
+        // self-assignment if it exists
         Map<String, RevenueTarget> consolidated = new HashMap<>();
         for (RevenueTarget t : latestTargets) {
             String key = t.getYear() + "-" + t.getMonth();
@@ -154,9 +155,10 @@ public class RevenueTargetService {
         for (RevenueTarget t : consolidated.values()) {
             LocalDateTime start = LocalDate.of(t.getYear(), t.getMonth(), 1).atStartOfDay();
             LocalDateTime end = LocalDate.of(t.getYear(), t.getMonth(), 1).plusMonths(1).atStartOfDay();
-            
+
             BigDecimal achieved = paymentRepository.getTotalRevenueIn(Collections.singletonList(userId), start, end);
-            if (achieved == null) achieved = BigDecimal.ZERO;
+            if (achieved == null)
+                achieved = BigDecimal.ZERO;
 
             Map<String, Object> entry = new HashMap<>();
             entry.put("id", t.getId());
@@ -166,10 +168,10 @@ public class RevenueTargetService {
             entry.put("achievedAmount", achieved);
             entry.put("assignedBy", t.getAssignedBy());
             entry.put("createdAt", t.getCreatedAt());
-            entry.put("achievementRate", t.getTargetAmount().compareTo(BigDecimal.ZERO) > 0 
-                ? achieved.divide(t.getTargetAmount(), 4, RoundingMode.HALF_UP).multiply(new BigDecimal(100))
-                : BigDecimal.ZERO);
-            
+            entry.put("achievementRate", t.getTargetAmount().compareTo(BigDecimal.ZERO) > 0
+                    ? achieved.divide(t.getTargetAmount(), 4, RoundingMode.HALF_UP).multiply(new BigDecimal(100))
+                    : BigDecimal.ZERO);
+
             history.add(entry);
         }
         return history;
@@ -177,8 +179,9 @@ public class RevenueTargetService {
 
     @Transactional(readOnly = true)
     public List<Map<String, Object>> getTargetsAssignedBy(Long assignerId, Integer month, Integer year) {
-        List<RevenueTarget> latestAssignments = targetRepository.findAllByAssignedByAndMonthAndYear(assignerId, month, year);
-        
+        List<RevenueTarget> latestAssignments = targetRepository.findAllByAssignedByAndMonthAndYear(assignerId, month,
+                year);
+
         List<Map<String, Object>> result = new ArrayList<>();
         for (RevenueTarget rt : latestAssignments) {
             Map<String, Object> map = new HashMap<>();
