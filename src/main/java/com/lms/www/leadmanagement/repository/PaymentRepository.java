@@ -176,11 +176,11 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     @Query("SELECT COUNT(p) FROM Payment p JOIN Lead l ON p.leadId = l.id LEFT JOIN l.assignedTo a WHERE (p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.OVERDUE) AND (a.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds))")
     long countAllPendingByUserIds(@Param("userIds") java.util.Collection<Long> userIds);
 
-    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE (p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.OVERDUE) AND (:start IS NULL OR p.dueDate >= :start)")
-    java.math.BigDecimal getGlobalTotalPendingRevenueIn(@Param("start") java.time.LocalDateTime start, @Param("end") java.time.LocalDateTime end);
+    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING AND (:start IS NULL OR p.dueDate >= :start)")
+    java.math.BigDecimal getGlobalTotalPendingRevenueIn(@Param("start") java.time.LocalDateTime start);
 
-    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p JOIN Lead l ON p.leadId = l.id LEFT JOIN l.assignedTo a WHERE (p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.OVERDUE) AND (a.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds)) AND (:start IS NULL OR p.dueDate >= :start)")
-    java.math.BigDecimal getTotalPendingRevenueIn(@Param("userIds") java.util.Collection<Long> userIds, @Param("start") java.time.LocalDateTime start, @Param("end") java.time.LocalDateTime end);
+    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p JOIN Lead l ON p.leadId = l.id LEFT JOIN l.assignedTo a WHERE p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING AND (a.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds)) AND (:start IS NULL OR p.dueDate >= :start)")
+    java.math.BigDecimal getTotalPendingRevenueIn(@Param("userIds") java.util.Collection<Long> userIds, @Param("start") java.time.LocalDateTime start);
     @Query("SELECT new map(FUNCTION('DATE', p.createdAt) as date, sum(p.amount) as amount) " +
             "FROM Payment p WHERE UPPER(p.status) IN ('PAID', 'APPROVED', 'SUCCESS', 'PARTIAL', 'COMPLETED') " +
             "AND p.createdAt BETWEEN :start AND :end " +

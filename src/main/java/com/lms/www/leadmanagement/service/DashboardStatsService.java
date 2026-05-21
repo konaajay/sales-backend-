@@ -243,8 +243,8 @@ public class DashboardStatsService {
                                 : paymentRepository.getTotalRevenueIn(userIdList, start.withDayOfMonth(1), end),
                 BigDecimal.ZERO);
         CompletableFuture<BigDecimal> pendingRevenueFuture = safeAsync(
-                () -> isGlobalAdmin ? paymentRepository.getGlobalTotalPendingRevenueIn(start.minusYears(5), end)
-                                : paymentRepository.getTotalPendingRevenueIn(userIdList, start.minusYears(5), end),
+                () -> isGlobalAdmin ? paymentRepository.getGlobalTotalPendingRevenueIn(start.minusYears(5))
+                                : paymentRepository.getTotalPendingRevenueIn(userIdList, start.minusYears(5)),
                 BigDecimal.ZERO);
         CompletableFuture<BigDecimal> forecastRevenueFuture = safeAsync(
                 () -> (isGlobalAdmin || userIdList.isEmpty()) ? BigDecimal.ZERO
