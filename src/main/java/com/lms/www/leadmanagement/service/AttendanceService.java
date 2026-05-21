@@ -52,7 +52,7 @@ public class AttendanceService {
         Long userId = request.getUserId();
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         
-        Optional<AttendanceSession> active = sessionRepository.findActiveSession(userId, List.of(AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK, AttendanceStatus.AUTO_BREAK, AttendanceStatus.OUTSIDE));
+        Optional<AttendanceSession> active = sessionRepository.findActiveSession(userId, List.of(AttendanceStatus.WORKING, AttendanceStatus.ON_SHORT_BREAK, AttendanceStatus.ON_LONG_BREAK, AttendanceStatus.ON_BREAK, AttendanceStatus.AUTO_BREAK, AttendanceStatus.OUTSIDE));
         if (active.isPresent()) throw new RuntimeException("You already have an active session.");
 
         boolean wfh = isWfhApproved(userId);
@@ -99,7 +99,7 @@ public class AttendanceService {
 
     @Transactional
     public AttendanceDTO trackLocation(LocationRequestDTO request, String ua, String ip) {
-        AttendanceSession session = sessionRepository.findActiveSession(request.getUserId(), List.of(AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK, AttendanceStatus.AUTO_BREAK, AttendanceStatus.OUTSIDE))
+        AttendanceSession session = sessionRepository.findActiveSession(request.getUserId(), List.of(AttendanceStatus.WORKING, AttendanceStatus.ON_SHORT_BREAK, AttendanceStatus.ON_LONG_BREAK, AttendanceStatus.ON_BREAK, AttendanceStatus.AUTO_BREAK, AttendanceStatus.OUTSIDE))
                 .orElseThrow(() -> new ResourceNotFoundException("No active session."));
 
         LocalDateTime now = nowInIndia();
@@ -109,10 +109,16 @@ public class AttendanceService {
         boolean wfh = isWfhApproved(session.getUser().getId());
         boolean inside = wfh || calculateDistance(request.getLat(), request.getLng(), session.getOffice().getLatitude(), session.getOffice().getLongitude()) <= session.getOffice().getRadius();
 
+        LocalTime shiftStart = (shift != null) ? shift.getStartTime() : LocalTime.of(9, 30);
         LocalTime shiftEnd = (shift != null) ? shift.getEndTime() : LocalTime.of(18, 30);
         
+        LocalDateTime shiftEndDateTime = session.getCheckInTime().toLocalDate().atTime(shiftEnd);
+        if (shiftEnd.isBefore(shiftStart)) {
+            shiftEndDateTime = shiftEndDateTime.plusDays(1);
+        }
+        
         // Strategic: Force checkout if more than 30 mins after shift end OR if shift ended and user is outside
-        if (now.toLocalTime().isAfter(shiftEnd.plusMinutes(30)) || (now.toLocalTime().isAfter(shiftEnd) && !inside)) {
+        if (now.isAfter(shiftEndDateTime.plusMinutes(30)) || (now.isAfter(shiftEndDateTime) && !inside)) {
             finalizeSession(session, now, true);
             return mapToDTO(session, todayInIndia());
         } 
@@ -133,14 +139,23 @@ public class AttendanceService {
         AttendanceStatus current = session.getStatus();
 
         if (current == AttendanceStatus.WORKING) {
-            session.setTotalWorkSeconds(session.getTotalWorkSeconds() + segmentSecs);
-        } else if (current == AttendanceStatus.ON_BREAK || current == AttendanceStatus.AUTO_BREAK) {
-            session.setTotalBreakSeconds(session.getTotalBreakSeconds() + segmentSecs);
+            session.setTotalWorkSeconds((session.getTotalWorkSeconds() != null ? session.getTotalWorkSeconds() : 0L) + segmentSecs);
+        } else if (current == AttendanceStatus.AUTO_BREAK) {
+            LocalTime pingTime = lastPing.toLocalTime();
+            if (isInsideLongBreakWindow(pingTime, shift)) {
+                session.setLongBreakSeconds((session.getLongBreakSeconds() != null ? session.getLongBreakSeconds() : 0L) + segmentSecs);
+            } else if (isInsideShortBreakWindow(pingTime, shift)) {
+                session.setShortBreakSeconds((session.getShortBreakSeconds() != null ? session.getShortBreakSeconds() : 0L) + segmentSecs);
+            } else {
+                session.setTotalBreakSeconds((session.getTotalBreakSeconds() != null ? session.getTotalBreakSeconds() : 0L) + segmentSecs); // fallback
+            }
+        } else if (current == AttendanceStatus.ON_BREAK) {
+            session.setTotalBreakSeconds((session.getTotalBreakSeconds() != null ? session.getTotalBreakSeconds() : 0L) + segmentSecs);
         } else if (current == AttendanceStatus.OUTSIDE) {
-            session.setTotalOutsideSeconds(session.getTotalOutsideSeconds() + segmentSecs);
+            session.setTotalOutsideSeconds((session.getTotalOutsideSeconds() != null ? session.getTotalOutsideSeconds() : 0L) + segmentSecs);
         }
 
-        if (current == AttendanceStatus.ON_BREAK) return;
+        if (current == AttendanceStatus.ON_SHORT_BREAK || current == AttendanceStatus.ON_LONG_BREAK || current == AttendanceStatus.ON_BREAK) return;
 
         LocalTime time = now.toLocalTime();
         if (isInsideAutoBreakWindow(time, shift)) {
@@ -152,20 +167,25 @@ public class AttendanceService {
         }
     }
 
-    private boolean isInsideAutoBreakWindow(LocalTime time, AttendanceShift shift) {
+    private boolean isInsideLongBreakWindow(LocalTime time, AttendanceShift shift) {
         LocalTime lStart = (shift != null && shift.getLongBreakStartTime() != null) ? shift.getLongBreakStartTime() : LocalTime.of(13, 0);
         LocalTime lEnd = (shift != null && shift.getLongBreakEndTime() != null) ? shift.getLongBreakEndTime() : LocalTime.of(14, 0);
+        return lStart != null && lEnd != null && !time.isBefore(lStart) && time.isBefore(lEnd);
+    }
+
+    private boolean isInsideShortBreakWindow(LocalTime time, AttendanceShift shift) {
         LocalTime sStart = (shift != null && shift.getShortBreakStartTime() != null) ? shift.getShortBreakStartTime() : LocalTime.of(17, 0);
         LocalTime sEnd = (shift != null && shift.getShortBreakEndTime() != null) ? shift.getShortBreakEndTime() : LocalTime.of(17, 10);
+        return sStart != null && sEnd != null && !time.isBefore(sStart) && time.isBefore(sEnd);
+    }
 
-        if (lStart != null && lEnd != null && !time.isBefore(lStart) && time.isBefore(lEnd)) return true;
-        if (sStart != null && sEnd != null && !time.isBefore(sStart) && time.isBefore(sEnd)) return true;
-        return false;
+    private boolean isInsideAutoBreakWindow(LocalTime time, AttendanceShift shift) {
+        return isInsideLongBreakWindow(time, shift) || isInsideShortBreakWindow(time, shift);
     }
 
     @Transactional
     public AttendanceDTO clockOut(Long userId) {
-        AttendanceSession session = sessionRepository.findActiveSession(userId, List.of(AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK, AttendanceStatus.AUTO_BREAK, AttendanceStatus.OUTSIDE))
+        AttendanceSession session = sessionRepository.findActiveSession(userId, List.of(AttendanceStatus.WORKING, AttendanceStatus.ON_SHORT_BREAK, AttendanceStatus.ON_LONG_BREAK, AttendanceStatus.ON_BREAK, AttendanceStatus.AUTO_BREAK, AttendanceStatus.OUTSIDE))
                 .orElseThrow(() -> new ResourceNotFoundException("No active session."));
         finalizeSession(session, nowInIndia(), false);
         return mapToDTO(session, todayInIndia());
@@ -182,7 +202,7 @@ public class AttendanceService {
 
     @Transactional
     public AttendanceDTO endBreak(Long userId) {
-        AttendanceSession session = sessionRepository.findActiveSession(userId, List.of(AttendanceStatus.ON_BREAK))
+        AttendanceSession session = sessionRepository.findActiveSession(userId, List.of(AttendanceStatus.ON_SHORT_BREAK, AttendanceStatus.ON_LONG_BREAK, AttendanceStatus.ON_BREAK))
                 .orElseThrow(() -> new ResourceNotFoundException("No active break session."));
         session.setStatus(AttendanceStatus.WORKING);
         session = sessionRepository.save(session);
@@ -191,7 +211,7 @@ public class AttendanceService {
 
     @Transactional
     public Optional<AttendanceDTO> getCurrentStatus(Long userId) {
-        Optional<AttendanceSession> session = sessionRepository.findActiveSession(userId, List.of(AttendanceStatus.WORKING, AttendanceStatus.ON_BREAK, AttendanceStatus.AUTO_BREAK, AttendanceStatus.OUTSIDE));
+        Optional<AttendanceSession> session = sessionRepository.findActiveSession(userId, List.of(AttendanceStatus.WORKING, AttendanceStatus.ON_SHORT_BREAK, AttendanceStatus.ON_LONG_BREAK, AttendanceStatus.ON_BREAK, AttendanceStatus.AUTO_BREAK, AttendanceStatus.OUTSIDE));
         
         List<OfficeLocation> offices = officeRepository.findAll();
         
@@ -241,7 +261,11 @@ public class AttendanceService {
         
         daily.setLoginTime(session.getCheckInTime());
         daily.setLogoutTime(now);
-        daily.setTotalWorkMinutes((int)(session.getTotalWorkSeconds() / 60));
+        daily.setTotalWorkMinutes((int)((session.getTotalWorkSeconds() != null ? session.getTotalWorkSeconds() : 0) / 60));
+        daily.setTotalBreakMinutes((int)((session.getTotalBreakSeconds() != null ? session.getTotalBreakSeconds() : 0) / 60));
+        daily.setShortBreakMinutes((int)((session.getShortBreakSeconds() != null ? session.getShortBreakSeconds() : 0) / 60));
+        daily.setLongBreakMinutes((int)((session.getLongBreakSeconds() != null ? session.getLongBreakSeconds() : 0) / 60));
+        daily.setTotalOutsideMinutes((int)((session.getTotalOutsideSeconds() != null ? session.getTotalOutsideSeconds() : 0) / 60));
         daily.setLate(session.isLate());
         daily.setLateMinutes(session.getLateMinutes());
         
@@ -314,11 +338,19 @@ public class AttendanceService {
     }
 
     private AttendanceDTO mapToDTO(AttendanceSession s, LocalDate date) {
+        String note = dailyRepository.findSingleByUserIdAndDate(s.getUser().getId(), date)
+                .map(AttendanceDaily::getNote)
+                .orElse(null);
+
         return AttendanceDTO.builder()
                 .userId(s.getUser().getId()).userName(s.getUser().getName())
                 .date(date).checkInTime(s.getCheckInTime()).checkOutTime(s.getCheckOutTime())
-                .status(s.getStatus().name()).totalWorkMinutes((int)(s.getTotalWorkSeconds()/60))
-                .totalBreakMinutes((int)(s.getTotalBreakSeconds()/60)).totalIdleMinutes((int)(s.getTotalOutsideSeconds()/60))
+                .status(s.getStatus().name())
+                .totalWorkMinutes((int)((s.getTotalWorkSeconds() != null ? s.getTotalWorkSeconds() : 0)/60))
+                .totalBreakMinutes((int)((s.getTotalBreakSeconds() != null ? s.getTotalBreakSeconds() : 0)/60))
+                .shortBreakMinutes((int)((s.getShortBreakSeconds() != null ? s.getShortBreakSeconds() : 0)/60))
+                .longBreakMinutes((int)((s.getLongBreakSeconds() != null ? s.getLongBreakSeconds() : 0)/60))
+                .totalIdleMinutes((int)((s.getTotalOutsideSeconds() != null ? s.getTotalOutsideSeconds() : 0)/60))
                 .late(s.isLate()).lateMinutes(s.getLateMinutes()).isAutoCheckout(s.isAutoCheckout())
                 .lastLat(s.getLastLat()).lastLng(s.getLastLng()).lastSeenTime(s.getLastSeenTime())
                 .officeLat(s.getOffice() != null ? s.getOffice().getLatitude() : null)
@@ -327,6 +359,7 @@ public class AttendanceService {
                 .officeName(s.getOffice() != null ? s.getOffice().getName() : null)
                 .isWfhApproved(isWfhApproved(s.getUser().getId()))
                 .wfhStatus(isWfhApproved(s.getUser().getId()) ? "APPROVED" : "NONE")
+                .note(note)
                 .build();
     }
 
@@ -339,11 +372,16 @@ public class AttendanceService {
                 .userId(user.getId()).userName(user.getName())
                 .date(date).checkInTime(d.getLoginTime()).checkOutTime(d.getLogoutTime())
                 .status(d.getStatus()).totalWorkMinutes(d.getTotalWorkMinutes())
+                .totalBreakMinutes(d.getTotalBreakMinutes() != null ? d.getTotalBreakMinutes() : 0)
+                .shortBreakMinutes(d.getShortBreakMinutes() != null ? d.getShortBreakMinutes() : 0)
+                .longBreakMinutes(d.getLongBreakMinutes() != null ? d.getLongBreakMinutes() : 0)
+                .totalIdleMinutes(d.getTotalOutsideMinutes() != null ? d.getTotalOutsideMinutes() : 0)
                 .late(d.isLate()).lateMinutes(d.getLateMinutes())
                 .officeLat(office != null ? office.getLatitude() : null)
                 .officeLng(office != null ? office.getLongitude() : null)
                 .officeRadius(office != null ? office.getRadius() : 30.0)
                 .officeName(office != null ? office.getName() : null)
+                .note(d.getNote())
                 .isWfhApproved(isWfhApproved(user.getId()))
                 .wfhStatus(isWfhApproved(user.getId()) ? "APPROVED" : "NONE")
                 .build();
@@ -415,7 +453,20 @@ public class AttendanceService {
         return getLogs(from, to, uId, tId, mId, requester);
     }
 
-    public void updateDailyNote(Long userId, LocalDate date, String note) {}
+    @Transactional
+    public void updateDailyNote(Long userId, LocalDate date, String note) {
+        AttendanceDaily daily = dailyRepository.findSingleByUserIdAndDate(userId, date)
+            .orElseGet(() -> {
+                User user = userRepository.findById(userId)
+                    .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+                return AttendanceDaily.builder()
+                    .user(user)
+                    .date(date)
+                    .build();
+            });
+        daily.setNote(note);
+        dailyRepository.save(daily);
+    }
     
     public AttendancePreviewResponse calculatePreview(AttendancePreviewRequest request) { return new AttendancePreviewResponse(); }
     public void saveManualEntry(AttendancePreviewRequest request) {}

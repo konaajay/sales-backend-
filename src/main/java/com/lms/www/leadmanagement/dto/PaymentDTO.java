@@ -25,6 +25,7 @@ public class PaymentDTO {
     private String status;
     private String paymentGatewayId;
     private String receiptUrl;
+    private String note;
     private String assignedTlName;
     private java.time.LocalDateTime createdAt;
     private java.time.LocalDateTime updatedAt;
@@ -56,6 +57,7 @@ public class PaymentDTO {
                 .status(payment.getStatus() != null ? payment.getStatus().name() : "PENDING")
                 .paymentGatewayId(payment.getPaymentGatewayId())
                 .receiptUrl(payment.getReceiptUrl())
+                .note(payment.getNote())
                 .createdAt(payment.getCreatedAt())
                 .updatedAt(payment.getUpdatedAt())
                 .updatedById(payment.getUpdatedBy() != null ? payment.getUpdatedBy().getId() : null)

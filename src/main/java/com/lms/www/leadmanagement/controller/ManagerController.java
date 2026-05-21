@@ -163,7 +163,7 @@ public class ManagerController {
             @RequestParam(value = "startDate", required = false) @DateTimeFormat(iso = ISO.DATE_TIME) LocalDateTime startDate,
             @RequestParam(value = "endDate", required = false) @DateTimeFormat(iso = ISO.DATE_TIME) LocalDateTime endDate) {
         if (managerId == null && userId == null && tlId == null && associateId == null) {
-            userId = managerService.getCurrentUser().getId();
+            managerId = managerService.getCurrentUser().getId();
         }
         return ResponseEntity.ok(leadPaymentService.getFilteredPaymentHistory(managerId, userId, tlId, associateId, startDate, endDate, status));
     }

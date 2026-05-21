@@ -33,6 +33,18 @@ public class AttendanceDaily {
     private Integer totalWorkMinutes = 0;
     
     @Builder.Default
+    private Integer totalBreakMinutes = 0;
+
+    @Builder.Default
+    private Integer shortBreakMinutes = 0;
+
+    @Builder.Default
+    private Integer longBreakMinutes = 0;
+
+    @Builder.Default
+    private Integer totalOutsideMinutes = 0;
+    
+    @Builder.Default
     private String status = "ABSENT";
 
     private LocalDateTime loginTime;

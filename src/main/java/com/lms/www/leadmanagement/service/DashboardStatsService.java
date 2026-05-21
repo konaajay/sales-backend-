@@ -187,7 +187,17 @@ public class DashboardStatsService {
 
         List<String> dbSuccess = pipelineStageRepository.findByAnalyticBucketIn(List.of("SUCCESS", "CONVERTED", "PAID"))
                 .stream().map(PipelineStage::getStatusValue).collect(Collectors.toList());
-        final List<String> successStatuses = dbSuccess.isEmpty() ? List.of("CONVERTED", "PAID", "SUCCESS") : dbSuccess;
+        final List<String> successStatuses = new ArrayList<>();
+        if (dbSuccess.isEmpty()) {
+            successStatuses.addAll(List.of("CONVERTED", "PAID", "SUCCESS"));
+        } else {
+            successStatuses.addAll(dbSuccess);
+        }
+        successStatuses.addAll(List.of("EMI", "PRE_PAYMENT", "PRE-PAYMENT"));
+        for (int i = 1; i <= 25; i++) {
+            successStatuses.add("PAID_INSTALLMENT_" + i);
+        }
+
 
         List<String> dbLost = pipelineStageRepository
                 .findByAnalyticBucketIn(List.of("LOST", "NOT_INTERESTED", "REJECTED")).stream()

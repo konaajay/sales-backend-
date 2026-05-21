@@ -8,6 +8,11 @@ import com.lms.www.leadmanagement.exception.ResourceNotFoundException;
 import com.lms.www.leadmanagement.repository.LeadRepository;
 import com.lms.www.leadmanagement.repository.PaymentRepository;
 import com.lms.www.leadmanagement.repository.StudentFeeRepository;
+import com.lms.www.leadmanagement.repository.LeadAuditLogRepository;
+import com.lms.www.leadmanagement.repository.LeadNoteRepository;
+import com.lms.www.leadmanagement.entity.LeadAuditLog;
+import com.lms.www.leadmanagement.entity.LeadNote;
+import com.lms.www.leadmanagement.entity.User;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -26,6 +31,9 @@ public class StudentFeeService {
     private final StudentFeeRepository studentFeeRepository;
     private final PaymentRepository paymentRepository;
     private final LeadRepository leadRepository;
+    private final LeadAuditLogRepository leadAuditLogRepository;
+    private final LeadNoteRepository leadNoteRepository;
+    private final SecurityService securityService;
 
     private static final String STATUS_CONVERTED = "CONVERTED";
 
@@ -84,8 +92,12 @@ public class StudentFeeService {
 
         if (!newStatus.equalsIgnoreCase(lead.getStatus())) {
             log.info("StudentFeeService: Transitioning Lead {} status from {} to {}", lead.getId(), lead.getStatus(), newStatus);
+            String oldStatus = lead.getStatus() != null ? lead.getStatus() : "OPEN";
             lead.setStatus(newStatus);
             leadRepository.save(lead);
+            
+            String noteContent = "System automatically transitioned status from " + oldStatus + " to " + newStatus + " due to fee sync.";
+            recordStatusChange(lead, oldStatus, newStatus, noteContent);
         }
     }
 
@@ -168,5 +180,34 @@ public class StudentFeeService {
         if (p == null || p.getStatus() == null) return false;
         Payment.Status s = p.getStatus();
         return s == Payment.Status.PAID || s == Payment.Status.SUCCESS || s == Payment.Status.COMPLETED;
+    }
+
+    private void recordStatusChange(Lead lead, String oldStatus, String newStatus, String noteContent) {
+        User currentUser = null;
+        try {
+            currentUser = securityService.getCurrentUser();
+        } catch (Exception e) {
+            // Context not authenticated (e.g. webhook)
+        }
+        
+        LeadAuditLog auditLog = LeadAuditLog.builder()
+                .leadId(lead.getId())
+                .changedBy(currentUser)
+                .fieldName("STATUS")
+                .oldValue(oldStatus)
+                .newValue(newStatus)
+                .action("STATUS_CHANGE")
+                .timestamp(LocalDateTime.now())
+                .build();
+        leadAuditLogRepository.save(auditLog);
+
+        LeadNote note = LeadNote.builder()
+                .lead(lead)
+                .createdBy(currentUser)
+                .content(noteContent != null && !noteContent.isEmpty() ? noteContent : "System status update: " + newStatus)
+                .status(newStatus)
+                .createdAt(LocalDateTime.now())
+                .build();
+        leadNoteRepository.save(note);
     }
 }

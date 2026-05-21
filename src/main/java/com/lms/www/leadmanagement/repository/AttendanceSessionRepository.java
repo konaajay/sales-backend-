@@ -54,6 +54,7 @@ public interface AttendanceSessionRepository extends JpaRepository<AttendanceSes
                 AND s.checkInTime < :endOfDay
                 AND (s.checkOutTime IS NULL OR s.checkOutTime > :startOfDay)
                 AND (s.user.joiningDate IS NULL OR s.checkInTime >= s.user.joiningDate)
+                ORDER BY s.checkInTime DESC
             """)
     List<AttendanceSession> findSessionsForDate(
             @org.springframework.data.repository.query.Param("userId") Long userId,

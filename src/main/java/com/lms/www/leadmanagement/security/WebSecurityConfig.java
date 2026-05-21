@@ -68,7 +68,8 @@ public class WebSecurityConfig {
                         .requestMatchers("/api/auth/login", "/api/auth/forgot-password", "/api/auth/reset-password",
                                 "/error")
                         .permitAll()
-                        .requestMatchers("/api/public/**", "/api/payments/**", "/uploads/**").permitAll()
+                        .requestMatchers("/api/public/**", "/api/payments/**", "/uploads/**", "/api/form/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/webinars/**").permitAll()
 
                         // Restrict payment endpoints properly
                         .requestMatchers(HttpMethod.POST, "/api/payments/create").authenticated()

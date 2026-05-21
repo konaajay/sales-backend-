@@ -109,9 +109,34 @@ public class PaymentController {
 
     @PostMapping("/api/payments/{id}/reject")
     @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER', 'ADMIN', 'MANAGER')")
-    public ResponseEntity<Void> rejectPayment(@PathVariable Long id, @RequestParam(required = false) String reason) {
-        leadPaymentService.rejectPayment(id, reason != null ? reason : "Unspecified", securityService.getCurrentUser());
+    public ResponseEntity<Void> rejectPayment(
+            @PathVariable Long id, 
+            @RequestParam(required = false) String reason,
+            @RequestBody(required = false) Map<String, Object> body) {
+        String finalReason = reason;
+        if (body != null && body.containsKey("reason")) {
+            Object r = body.get("reason");
+            if (r != null) {
+                finalReason = r.toString();
+            }
+        }
+        if (finalReason == null || finalReason.trim().isEmpty()) {
+            finalReason = "Unspecified";
+        }
+        leadPaymentService.rejectPayment(id, finalReason, securityService.getCurrentUser());
         return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/api/payments/alerts/pending-approvals")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_MANAGER', 'ADMIN', 'MANAGER')")
+    public ResponseEntity<List<PaymentDTO>> getPendingApprovals() {
+        return ResponseEntity.ok(leadPaymentService.getPendingApprovals());
+    }
+
+    @GetMapping("/api/payments/alerts/my-status")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<List<PaymentDTO>> getMyPaymentStatus() {
+        return ResponseEntity.ok(leadPaymentService.getMyRecentlyResolvedPayments());
     }
 
     @GetMapping("/api/payments/lead/{leadId}/fee-structure")
@@ -144,9 +169,14 @@ public class PaymentController {
         if (payload.containsKey("discount") && payload.get("discount") != null && !payload.get("discount").toString().isBlank()) {
             discount = new java.math.BigDecimal(payload.get("discount").toString());
         }
+
+        Long courseId = null;
+        if (payload.containsKey("courseId") && payload.get("courseId") != null && !payload.get("courseId").toString().isBlank()) {
+            courseId = Long.valueOf(payload.get("courseId").toString());
+        }
         
         try {
-            return ResponseEntity.ok(leadPaymentService.createCashfreeOrder(leadId, amount, type, installments, totalAmount, discount));
+            return ResponseEntity.ok(leadPaymentService.createCashfreeOrder(leadId, amount, type, installments, totalAmount, discount, courseId));
         } catch (Exception e) {
             log.error("CRITICAL: Cashfree Order Initiation Failed for Lead {}: {}", leadId, e.getMessage(), e);
             Map<String, String> error = new HashMap<>();

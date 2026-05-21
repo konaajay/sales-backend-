@@ -35,6 +35,9 @@ public class LeadPaymentService {
     private final CashfreeService cashfreeService;
     private final StudentFeeService studentFeeService;
     private final LeadTaskService leadTaskService;
+    private final LeadAuditLogRepository leadAuditLogRepository;
+    private final LeadNoteRepository leadNoteRepository;
+    private final CourseRepository courseRepository;
 
     @Value("${cashfree.webhook.url}")
     private String webhookUrl;
@@ -55,9 +58,14 @@ public class LeadPaymentService {
 
     @Transactional
     public Map<String, String> createCashfreeOrder(Long leadId, BigDecimal amount, String type,
-            List<Map<String, Object>> plannedInstallments, BigDecimal totalAmount, BigDecimal discount) {
+            List<Map<String, Object>> plannedInstallments, BigDecimal totalAmount, BigDecimal discount, Long courseId) {
         Lead lead = leadRepository.findById(leadId)
                 .orElseThrow(() -> new ResourceNotFoundException("Lead not found"));
+
+        if (courseId != null) {
+            courseRepository.findById(courseId).ifPresent(lead::setCourse);
+            leadRepository.save(lead);
+        }
 
         BigDecimal minAmount = new BigDecimal("500");
         if (lead.getCourse() != null && lead.getCourse().getMinTokenAmount() != null) {
@@ -297,8 +305,11 @@ public class LeadPaymentService {
         Lead lead = leadRepository.findById(leadId)
                 .orElseThrow(() -> new ResourceNotFoundException("Lead not found"));
 
+        String currentStatus = lead.getStatus() != null ? lead.getStatus() : "OPEN";
         lead.setStatus(STATUS_CONVERTED);
         leadRepository.save(lead);
+
+        recordStatusChange(lead, currentStatus, STATUS_CONVERTED, "Marked as paid manually");
 
         log.info("Lead {} manually marked as PAID/CONVERTED", lead.getEmail());
     }
@@ -347,8 +358,9 @@ public class LeadPaymentService {
             targetUserIds.add(managerId);
         }
 
-        boolean isGlobalAdmin = securityService.isAdmin(requester) && managerId == null && tlId == null
-                && associateId == null && userId == null;
+        boolean isSelfManager = managerId != null && managerId.equals(requester.getId());
+        boolean isGlobalAdmin = securityService.isAdmin(requester) && tlId == null
+                && associateId == null && userId == null && (managerId == null || isSelfManager);
 
         Payment.Status pStatus = (status != null && !status.isEmpty()) ? Payment.Status.valueOf(status.toUpperCase()) : null;
 
@@ -472,14 +484,20 @@ public class LeadPaymentService {
         Lead lead = leadRepository.findById(payment.getLeadId())
                 .orElseThrow(() -> new ResourceNotFoundException("Lead linked to payment not found"));
 
+        String currentStatus = lead.getStatus() != null ? lead.getStatus() : "OPEN";
+
         if (actualPaidAmount != null && actualPaidAmount.compareTo(BigDecimal.ZERO) > 0
                 && actualPaidAmount.compareTo(payment.getAmount()) < 0) {
             handlePartialPayment(payment, lead, actualPaidAmount, nextDueDateStr);
         } else {
             handleFullPayment(payment, lead);
         }
+        
         lead.setStatus(STATUS_CONVERTED);
         leadRepository.save(lead);
+
+        String noteContent = "Payment of ₹" + payment.getAmount() + " processed successfully. Status updated to CONVERTED.";
+        recordStatusChange(lead, currentStatus, STATUS_CONVERTED, noteContent);
     }
 
     private void handlePartialPayment(Payment payment, Lead lead, BigDecimal paidAmount, String nextDueDateStr) {
@@ -545,6 +563,10 @@ public class LeadPaymentService {
         BigDecimal totalAmount = data.getTotalAmount() != null ? data.getTotalAmount() : amount;
 
         Lead lead = leadRepository.findById(leadId).orElseThrow(() -> new ResourceNotFoundException("Lead not found"));
+        if (data.getCourseId() != null) {
+            courseRepository.findById(data.getCourseId()).ifPresent(lead::setCourse);
+            leadRepository.save(lead);
+        }
         User requester = securityService.getCurrentUser();
 
         if (lead.getAssignedTo() != null) {
@@ -663,6 +685,7 @@ public class LeadPaymentService {
 
         payment.setStatus(Payment.Status.PAID);
         payment.setUpdatedBy(requester);
+        payment.setUpdatedAt(LocalDateTime.now());
         paymentRepository.save(payment);
 
         processSuccessfulPayment(payment, payment.getAmount(), null);
@@ -684,8 +707,13 @@ public class LeadPaymentService {
         }
 
         payment.setStatus(Payment.Status.REJECTED);
-        payment.setNote(payment.getNote() + " | REJECTED: " + reason);
+        String existingNote = payment.getNote();
+        if (existingNote == null || "null".equals(existingNote)) {
+            existingNote = "";
+        }
+        payment.setNote(existingNote.isEmpty() ? "REJECTED: " + reason : existingNote + " | REJECTED: " + reason);
         payment.setUpdatedBy(requester);
+        payment.setUpdatedAt(LocalDateTime.now());
         paymentRepository.save(payment);
 
         int instNum = getInstallmentNumber(payment);
@@ -697,9 +725,13 @@ public class LeadPaymentService {
         });
 
         leadRepository.findById(payment.getLeadId()).ifPresent(lead -> {
+            String currentStatus = lead.getStatus() != null ? lead.getStatus() : "OPEN";
             log.info("Transitioning Lead {} status from {} to {} due to rejection", lead.getId(), lead.getStatus(), granularStatus);
             lead.setStatus(granularStatus);
             leadRepository.save(lead);
+
+            String noteContent = "Payment of ₹" + payment.getAmount() + " rejected by Manager. Reason: " + reason;
+            recordStatusChange(lead, currentStatus, granularStatus, noteContent);
         });
     }
 
@@ -958,5 +990,64 @@ public class LeadPaymentService {
                 log.error(">>> Error processing manual installment: {}", e.getMessage(), e);
             }
         }
+    }
+
+    @Transactional(readOnly = true)
+    public List<PaymentDTO> getPendingApprovals() {
+        User requester = securityService.getCurrentUser();
+        if (requester == null) {
+            return Collections.emptyList();
+        }
+        if (securityService.isAdmin(requester)) {
+            return paymentRepository.findAllByStatus(Payment.Status.PENDING_APPROVAL).stream()
+                    .map(this::convertToDTO)
+                    .collect(Collectors.toList());
+        } else {
+            java.util.Set<Long> targetUserIds = securityService.getAllowedUserIds(requester);
+            return paymentRepository.findPendingApprovalsByUserIds(targetUserIds, Payment.Status.PENDING_APPROVAL).stream()
+                    .map(this::convertToDTO)
+                    .collect(Collectors.toList());
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List<PaymentDTO> getMyRecentlyResolvedPayments() {
+        User requester = securityService.getCurrentUser();
+        if (requester == null) return Collections.emptyList();
+
+        // Only relevant for non-admin/non-manager users (associates, team leaders)
+        if (securityService.isAdmin(requester) || securityService.isManager(requester)) {
+            return Collections.emptyList();
+        }
+
+        // Return payments submitted by this user that were approved (PAID) or rejected (REJECTED) in last 3 days
+        LocalDateTime since = LocalDateTime.now().minusDays(3);
+        return paymentRepository.findRecentlyResolvedByUpdater(requester.getId(), since).stream()
+                .map(this::convertToDTO)
+                .collect(Collectors.toList());
+    }
+
+    private void recordStatusChange(Lead lead, String oldStatus, String newStatus, String noteContent) {
+        User currentUser = securityService.getCurrentUser();
+        
+        LeadAuditLog auditLog = LeadAuditLog.builder()
+                .leadId(lead.getId())
+                .changedBy(currentUser)
+                .fieldName("STATUS")
+                .oldValue(oldStatus)
+                .newValue(newStatus)
+                .action("STATUS_CHANGE")
+                .timestamp(LocalDateTime.now())
+                .build();
+        leadAuditLogRepository.save(auditLog);
+
+        LeadNote note = LeadNote.builder()
+                .lead(lead)
+                .createdBy(currentUser)
+                .content(noteContent != null && !noteContent.isEmpty() ? noteContent : "Status changed to " + newStatus)
+                .status(newStatus)
+                .createdAt(LocalDateTime.now())
+                .build();
+        leadNoteRepository.save(note);
     }
 }

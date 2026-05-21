@@ -39,7 +39,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
     long countByFollowUpDateBetween(LocalDateTime start, LocalDateTime end);
     long countByFollowUpDateBefore(LocalDateTime now);
     @Modifying
-    @Query("UPDATE Lead l SET l.assignedTo = NULL WHERE l.assignedTo.id = :userId AND l.status NOT IN ('PAID', 'SUCCESS', 'EMI', 'CONVERTED')")
+    @Query("UPDATE Lead l SET l.assignedTo = NULL WHERE l.assignedTo.id = :userId AND l.status NOT IN ('PAID', 'SUCCESS', 'EMI', 'CONVERTED', 'PRE_PAYMENT', 'PRE-PAYMENT') AND l.status NOT LIKE 'PAID_INSTALLMENT_%'")
     void unassignNonFinalizedLeads(@Param("userId") Long userId);
 
     @Query("SELECT l FROM Lead l WHERE l.assignedTo IS NULL OR l.assignedTo.active = false")
@@ -141,7 +141,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
             "sum(case when UPPER(l.status) = 'CONTACTED' then 1 else 0 end) as contactedCount, " +
             "sum(case when UPPER(l.status) IN ('INTERESTED', 'UNDER_REVIEW') then 1 else 0 end) as interestedCount, " +
             "sum(case when UPPER(l.status) IN ('FOLLOW_UP', 'EMI_FOLLOWUP') then 1 else 0 end) as followUpCount, " +
-            "sum(case when UPPER(l.status) IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as convertedCount, " +
+            "sum(case when (UPPER(l.status) IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS', 'PRE_PAYMENT', 'PRE-PAYMENT') OR l.status LIKE 'PAID_INSTALLMENT_%') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as convertedCount, " +
             "sum(case when UPPER(l.status) IN ('DNP', 'SWITCH_OFF', 'SWITCHED_OFF', 'OUT_OF_COVERAGE', 'OUT_OF_COVERAGE_AREA', 'WRONG_NUMBER', 'NOT_RESPONDING') then 1 else 0 end) as dnpCount, " +
             "sum(case when UPPER(l.status) = 'REJECTED' then 1 else 0 end) as rejectedCount, " +
             "sum(case when UPPER(l.status) = 'REFUND' then 1 else 0 end) as refundCount, " +
@@ -160,7 +160,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
             "sum(case when UPPER(l.status) = 'CONTACTED' then 1 else 0 end) as contactedCount, " +
             "sum(case when UPPER(l.status) IN ('INTERESTED', 'UNDER_REVIEW') then 1 else 0 end) as interestedCount, " +
             "sum(case when UPPER(l.status) IN ('FOLLOW_UP', 'EMI_FOLLOWUP') then 1 else 0 end) as followUpCount, " +
-            "sum(case when UPPER(l.status) IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as convertedCount, " +
+            "sum(case when (UPPER(l.status) IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS', 'PRE_PAYMENT', 'PRE-PAYMENT') OR l.status LIKE 'PAID_INSTALLMENT_%') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as convertedCount, " +
             "sum(case when UPPER(l.status) IN ('DNP', 'SWITCH_OFF', 'SWITCHED_OFF', 'OUT_OF_COVERAGE', 'OUT_OF_COVERAGE_AREA', 'WRONG_NUMBER', 'NOT_RESPONDING') then 1 else 0 end) as dnpCount, " +
             "sum(case when UPPER(l.status) = 'REJECTED' then 1 else 0 end) as rejectedCount, " +
             "sum(case when UPPER(l.status) = 'REFUND' then 1 else 0 end) as refundCount, " +
@@ -177,7 +177,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
             "sum(case when UPPER(l.status) = 'CONTACTED' then 1 else 0 end) as contactedCount, " +
             "sum(case when UPPER(l.status) IN ('INTERESTED', 'UNDER_REVIEW') then 1 else 0 end) as interestedCount, " +
             "sum(case when UPPER(l.status) IN ('FOLLOW_UP', 'EMI_FOLLOWUP') then 1 else 0 end) as followUpCount, " +
-            "sum(case when UPPER(l.status) IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as convertedCount, " +
+            "sum(case when (UPPER(l.status) IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS', 'PRE_PAYMENT', 'PRE-PAYMENT') OR l.status LIKE 'PAID_INSTALLMENT_%') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as convertedCount, " +
             "sum(case when UPPER(l.status) IN ('DNP', 'SWITCH_OFF', 'SWITCHED_OFF', 'OUT_OF_COVERAGE', 'OUT_OF_COVERAGE_AREA', 'WRONG_NUMBER', 'NOT_RESPONDING') then 1 else 0 end) as dnpCount, " +
             "sum(case when UPPER(l.status) = 'REJECTED' then 1 else 0 end) as rejectedCount, " +
             "sum(case when UPPER(l.status) = 'REFUND' then 1 else 0 end) as refundCount, " +
@@ -192,7 +192,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
     @Query("SELECT COUNT(l) FROM Lead l WHERE (l.assignedTo.id IN :userIds OR l.createdBy.id IN :userIds) AND l.followUpDate BETWEEN :start AND :end")
     long countLeadsByFollowUpDate(@Param("userIds") Collection<Long> userIds, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
-    @Query("SELECT COUNT(l) FROM Lead l WHERE (l.assignedTo.id IN :userIds OR l.createdBy.id IN :userIds) AND l.followUpDate < :now AND l.status NOT IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS', 'LOST', 'NOT_INTERESTED', 'CLOSED', 'COMPLETED')")
+    @Query("SELECT COUNT(l) FROM Lead l WHERE (l.assignedTo.id IN :userIds OR l.createdBy.id IN :userIds) AND l.followUpDate < :now AND l.status NOT IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS', 'PRE_PAYMENT', 'PRE-PAYMENT', 'LOST', 'NOT_INTERESTED', 'CLOSED', 'COMPLETED') AND l.status NOT LIKE 'PAID_INSTALLMENT_%'")
     long countOverdueLeads(@Param("userIds") Collection<Long> userIds, @Param("now") LocalDateTime now);
 
     @Query("SELECT COUNT(l) FROM Lead l WHERE (l.assignedTo.id IN :userIds OR l.createdBy.id IN :userIds) AND l.status IN ('INTERESTED', 'UNDER_REVIEW') AND l.followUpDate <= :now")
@@ -201,7 +201,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
     @Query("SELECT COUNT(l) FROM Lead l WHERE l.followUpDate BETWEEN :start AND :end")
     long countGlobalLeadsByFollowUpDate(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
-    @Query("SELECT COUNT(l) FROM Lead l WHERE l.followUpDate < :now AND l.status NOT IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS', 'LOST', 'NOT_INTERESTED', 'CLOSED', 'COMPLETED')")
+    @Query("SELECT COUNT(l) FROM Lead l WHERE l.followUpDate < :now AND l.status NOT IN ('CONVERTED', 'PAID', 'EMI', 'SUCCESS', 'PRE_PAYMENT', 'PRE-PAYMENT', 'LOST', 'NOT_INTERESTED', 'CLOSED', 'COMPLETED') AND l.status NOT LIKE 'PAID_INSTALLMENT_%'")
     long countGlobalOverdueLeads(@Param("now") LocalDateTime now);
 
     @Query("SELECT COUNT(l) FROM Lead l WHERE l.status IN ('INTERESTED', 'UNDER_REVIEW') AND l.followUpDate <= :now")

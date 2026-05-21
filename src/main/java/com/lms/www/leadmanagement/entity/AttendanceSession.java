@@ -55,6 +55,12 @@ public class AttendanceSession {
     private Long totalBreakSeconds = 0L;
 
     @Builder.Default
+    private Long shortBreakSeconds = 0L;
+
+    @Builder.Default
+    private Long longBreakSeconds = 0L;
+
+    @Builder.Default
     private Long totalOutsideSeconds = 0L;
 
     // Late Details

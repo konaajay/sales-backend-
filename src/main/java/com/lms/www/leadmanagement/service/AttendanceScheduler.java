@@ -27,7 +27,9 @@ public class AttendanceScheduler {
         LocalDateTime now = LocalDateTime.now(INDIA_ZONE);
         List<AttendanceStatus> activeStatuses = List.of(
             AttendanceStatus.WORKING, 
-            AttendanceStatus.ON_BREAK, 
+            AttendanceStatus.ON_SHORT_BREAK, 
+            AttendanceStatus.ON_LONG_BREAK, 
+            AttendanceStatus.ON_BREAK,
             AttendanceStatus.AUTO_BREAK, 
             AttendanceStatus.OUTSIDE
         );
@@ -42,8 +44,13 @@ public class AttendanceScheduler {
                 // If user has no shift, we can't auto-checkout based on shift end
                 if (shift == null) continue;
 
+                LocalTime shiftStart = shift.getStartTime();
                 LocalTime shiftEnd = shift.getEndTime();
                 LocalDateTime shiftEndToday = session.getCheckInTime().toLocalDate().atTime(shiftEnd);
+                
+                if (shiftEnd.isBefore(shiftStart)) {
+                    shiftEndToday = shiftEndToday.plusDays(1);
+                }
                 
                 // Add 30 minute buffer
                 if (now.isAfter(shiftEndToday.plusMinutes(30))) {

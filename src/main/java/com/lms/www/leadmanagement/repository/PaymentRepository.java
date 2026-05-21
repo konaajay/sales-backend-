@@ -38,8 +38,8 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     @Query("SELECT p FROM Payment p WHERE (:status IS NULL OR p.status = :status) " +
             "AND (:leadIds IS NULL OR p.leadId IN :leadIds) " +
-            "AND (:start IS NULL OR COALESCE(p.dueDate, p.createdAt) >= :start) " +
-            "AND (:end IS NULL OR COALESCE(p.dueDate, p.createdAt) <= :end)")
+            "AND ((:start IS NULL OR COALESCE(p.dueDate, p.createdAt) >= :start) OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.OVERDUE) " +
+            "AND ((:end IS NULL OR COALESCE(p.dueDate, p.createdAt) <= :end) OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.OVERDUE)")
     List<Payment> findFiltered(
             @Param("leadIds") java.util.List<Long> leadIds,
             @Param("start") java.time.LocalDateTime start,
@@ -49,8 +49,8 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     @Query("SELECT p FROM Payment p JOIN Lead l ON p.leadId = l.id LEFT JOIN l.assignedTo a " +
             "WHERE (:status IS NULL OR p.status = :status) " +
             "AND (a.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds)) " +
-            "AND (:start IS NULL OR COALESCE(p.dueDate, p.createdAt) >= :start) " +
-            "AND (:end IS NULL OR COALESCE(p.dueDate, p.createdAt) <= :end) " +
+            "AND ((:start IS NULL OR COALESCE(p.dueDate, p.createdAt) >= :start) OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.OVERDUE) " +
+            "AND ((:end IS NULL OR COALESCE(p.dueDate, p.createdAt) <= :end) OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.OVERDUE) " +
             "ORDER BY p.createdAt DESC")
     List<Payment> findFilteredByUserHierarchy(
             @Param("userIds") java.util.Collection<Long> userIds,
@@ -176,10 +176,10 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     @Query("SELECT COUNT(p) FROM Payment p JOIN Lead l ON p.leadId = l.id LEFT JOIN l.assignedTo a WHERE (p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.OVERDUE) AND (a.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds))")
     long countAllPendingByUserIds(@Param("userIds") java.util.Collection<Long> userIds);
 
-    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE (p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.OVERDUE) AND (:start IS NULL OR p.dueDate >= :start) AND (:end IS NULL OR p.dueDate <= :end)")
+    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p WHERE (p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.OVERDUE) AND (:start IS NULL OR p.dueDate >= :start)")
     java.math.BigDecimal getGlobalTotalPendingRevenueIn(@Param("start") java.time.LocalDateTime start, @Param("end") java.time.LocalDateTime end);
 
-    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p JOIN Lead l ON p.leadId = l.id LEFT JOIN l.assignedTo a WHERE (p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.OVERDUE) AND (a.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds)) AND (:start IS NULL OR p.dueDate >= :start) AND (:end IS NULL OR p.dueDate <= :end)")
+    @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p JOIN Lead l ON p.leadId = l.id LEFT JOIN l.assignedTo a WHERE (p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.OVERDUE) AND (a.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds)) AND (:start IS NULL OR p.dueDate >= :start)")
     java.math.BigDecimal getTotalPendingRevenueIn(@Param("userIds") java.util.Collection<Long> userIds, @Param("start") java.time.LocalDateTime start, @Param("end") java.time.LocalDateTime end);
     @Query("SELECT new map(FUNCTION('DATE', p.createdAt) as date, sum(p.amount) as amount) " +
             "FROM Payment p WHERE UPPER(p.status) IN ('PAID', 'APPROVED', 'SUCCESS', 'PARTIAL', 'COMPLETED') " +
@@ -228,4 +228,22 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
             java.util.Collection<Payment.Status> statuses,
             java.time.LocalDateTime start,
             java.time.LocalDateTime end);
+
+    @Query("SELECT p FROM Payment p JOIN Lead l ON p.leadId = l.id LEFT JOIN l.assignedTo a " +
+            "WHERE p.status = :status " +
+            "AND (a.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds))")
+    List<Payment> findPendingApprovalsByUserIds(@Param("userIds") java.util.Collection<Long> userIds, @Param("status") Payment.Status status);
+
+    /**
+     * Finds payments for leads assigned to the given user (as assignedTo or createdBy)
+     * that were recently resolved (PAID or REJECTED) after a cutoff time.
+     * Used to notify associates/team leads when their submitted manual payment is approved or rejected.
+     */
+    @Query("SELECT p FROM Payment p JOIN Lead l ON p.leadId = l.id " +
+            "WHERE (p.status = com.lms.www.leadmanagement.entity.Payment$Status.PAID " +
+            "   OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.APPROVED " +
+            "   OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.REJECTED) " +
+            "AND (l.assignedTo.id = :userId OR (l.assignedTo IS NULL AND l.createdBy.id = :userId)) " +
+            "AND p.updatedAt >= :since")
+    List<Payment> findRecentlyResolvedByUpdater(@Param("userId") Long userId, @Param("since") java.time.LocalDateTime since);
 }

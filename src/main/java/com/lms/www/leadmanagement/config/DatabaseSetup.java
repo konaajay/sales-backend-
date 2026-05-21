@@ -19,7 +19,12 @@ public class DatabaseSetup implements CommandLineRunner {
         try {
             // Force MySQL to update the column to TEXT
             jdbcTemplate.execute("ALTER TABLE certificate MODIFY error_message TEXT");
-            log.info("Database schema updated: 'error_message' column is now TEXT.");
+            
+            // Alter attendance status columns to VARCHAR to prevent Enum truncation issues
+            jdbcTemplate.execute("ALTER TABLE attendance_sessions MODIFY status VARCHAR(50)");
+            jdbcTemplate.execute("ALTER TABLE attendance_daily MODIFY status VARCHAR(50)");
+            
+            log.info("Database schema updated: 'error_message' column is now TEXT, and attendance statuses are VARCHAR.");
         } catch (Exception e) {
             // If it fails (e.g. column already TEXT or DB locked), we log and continue
             log.warn("Database schema update skipped or failed: {}", e.getMessage());
