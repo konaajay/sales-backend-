@@ -7,8 +7,10 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.lms.www.leadmanagement.entity.Registration;
 import com.lms.www.leadmanagement.entity.Webinar;
 import com.lms.www.leadmanagement.exception.ResourceNotFoundException;
+import com.lms.www.leadmanagement.repository.RegistrationRepository;
 import com.lms.www.leadmanagement.repository.WebinarRepository;
 
 import java.time.LocalDateTime;
@@ -23,6 +25,7 @@ import java.util.Map;
 public class WebinarController {
 
     private final WebinarRepository webinarRepository;
+    private final RegistrationRepository registrationRepository;
 
     @Value("${app.frontend-url}")
     private String frontendUrl;
@@ -95,5 +98,14 @@ public class WebinarController {
         response.put("formLink", frontendUrl + "?webinarId=" + webinar.getId());
         
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/{id}/registrations")
+    @Operation(summary = "Get all registrations for a webinar")
+    public ResponseEntity<?> getWebinarRegistrations(@PathVariable Long id) {
+        Webinar webinar = webinarRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Webinar not found with id: " + id));
+        List<Registration> registrations = registrationRepository.findByWebinarId(id);
+        return ResponseEntity.ok(registrations);
     }
 }

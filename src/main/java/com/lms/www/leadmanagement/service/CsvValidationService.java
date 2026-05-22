@@ -41,29 +41,36 @@ public class CsvValidationService {
             int rNum = row.getRowNumber();
 
             // 1. Empty Row / Required Fields Check
-            if (row.getName() == null || row.getName().trim().isEmpty() ||
-                row.getMobile() == null || row.getMobile().trim().isEmpty()) {
+            if (row.getName() == null || row.getName().trim().isEmpty()) {
                 failedList.add(FailedRow.builder()
                         .rowNumber(rNum)
                         .name(row.getName())
                         .email(row.getEmail())
                         .mobile(row.getMobile())
-                        .reason("Missing mandatory fields (Name or Mobile)")
+                        .reason("Missing mandatory field (Name)")
                         .build());
                 continue;
             }
 
-            // 2. Phone Length & Format Check
-            String cleanMobile = row.getMobile().replaceAll("[^0-9]", "");
-            if (cleanMobile.length() < 10) {
-                failedList.add(FailedRow.builder()
-                        .rowNumber(rNum)
-                        .name(row.getName())
-                        .email(row.getEmail())
-                        .mobile(row.getMobile())
-                        .reason("Invalid mobile number length (must be at least 10 digits)")
-                        .build());
-                continue;
+            // 2. Phone Length & Format Check / Auto-generation
+            String cleanMobile = "";
+            if (row.getMobile() == null || row.getMobile().trim().isEmpty()) {
+                // Generate a unique 10-digit number that starts with 9
+                do {
+                    cleanMobile = "9" + String.format("%09d", (long) (Math.random() * 1000000000L));
+                } while (leadRepository.existsByMobile(cleanMobile) || batchMobiles.contains(cleanMobile));
+            } else {
+                cleanMobile = row.getMobile().replaceAll("[^0-9]", "");
+                if (cleanMobile.length() < 10) {
+                    failedList.add(FailedRow.builder()
+                            .rowNumber(rNum)
+                            .name(row.getName())
+                            .email(row.getEmail())
+                            .mobile(row.getMobile())
+                            .reason("Invalid mobile number length (must be at least 10 digits)")
+                            .build());
+                    continue;
+                }
             }
 
             // 3. Duplicate Mobile Check (Batch level & DB level)
@@ -140,6 +147,7 @@ public class CsvValidationService {
             // 6. User & TL Validation
             String assignedVal = row.getAssignedToEmail() != null ? row.getAssignedToEmail().trim() : "";
             String tlVal = row.getTeamLeaderEmail() != null ? row.getTeamLeaderEmail().trim() : "";
+            String managerVal = row.getManagerEmail() != null ? row.getManagerEmail().trim() : "";
 
             User assignedUser = null;
             if (!assignedVal.isEmpty()) {
@@ -148,7 +156,8 @@ public class CsvValidationService {
                         Long id = Long.parseLong(assignedVal);
                         return userRepository.findById(id).orElse(null);
                     } catch (NumberFormatException e) {
-                        return userRepository.findByEmail(assignedVal).orElse(null);
+                        return userRepository.findByEmail(assignedVal)
+                                .orElseGet(() -> userRepository.findByNameIgnoreCase(assignedVal).orElse(null));
                     }
                 });
                 if (assignedUser == null) {
@@ -157,7 +166,7 @@ public class CsvValidationService {
                             .name(row.getName())
                             .email(row.getEmail())
                             .mobile(row.getMobile())
-                            .reason("Assigned user '" + assignedVal + "' (ID or Email not found in system)")
+                            .reason("Assigned user '" + assignedVal + "' (ID, Email, or Name not found in system)")
                             .build());
                     continue;
                 }
@@ -170,7 +179,8 @@ public class CsvValidationService {
                         Long id = Long.parseLong(tlVal);
                         return userRepository.findById(id).orElse(null);
                     } catch (NumberFormatException e) {
-                        return userRepository.findByEmail(tlVal).orElse(null);
+                        return userRepository.findByEmail(tlVal)
+                                .orElseGet(() -> userRepository.findByNameIgnoreCase(tlVal).orElse(null));
                     }
                 });
                 if (teamLeader == null) {
@@ -179,28 +189,39 @@ public class CsvValidationService {
                             .name(row.getName())
                             .email(row.getEmail())
                             .mobile(row.getMobile())
-                            .reason("Team Leader '" + tlVal + "' (ID or Email not found in system)")
+                            .reason("Team Leader '" + tlVal + "' (ID, Email, or Name not found in system)")
                             .build());
                     continue;
                 }
             }
 
-            // 7. TL Mapping Validation (If both assignedUser and teamLeader exist)
-            if (assignedUser != null && teamLeader != null) {
-                // Verify if assignedUser's supervisor or manager matches teamLeader
-                boolean isValidTl = (assignedUser.getSupervisor() != null && assignedUser.getSupervisor().getId().equals(teamLeader.getId())) ||
-                                    (assignedUser.getManager() != null && assignedUser.getManager().getId().equals(teamLeader.getId()));
-                if (!isValidTl) {
+            User manager = null;
+            if (!managerVal.isEmpty()) {
+                manager = userCache.computeIfAbsent(managerVal.toLowerCase(), k -> {
+                    try {
+                        Long id = Long.parseLong(managerVal);
+                        return userRepository.findById(id).orElse(null);
+                    } catch (NumberFormatException e) {
+                        return userRepository.findByEmail(managerVal)
+                                .orElseGet(() -> userRepository.findByNameIgnoreCase(managerVal).orElse(null));
+                    }
+                });
+                if (manager == null) {
                     failedList.add(FailedRow.builder()
                             .rowNumber(rNum)
                             .name(row.getName())
                             .email(row.getEmail())
                             .mobile(row.getMobile())
-                            .reason("Invalid hierarchy: User '" + assignedVal + "' is not assigned under Team Leader '" + tlVal + "'")
+                            .reason("Manager '" + managerVal + "' (ID, Email, or Name not found in system)")
                             .build());
                     continue;
                 }
             }
+
+            // 7. Hierarchy Validation (Relaxed)
+            // We are skipping the strict checks that verify if the associate is officially 
+            // reporting to the exact team leader/manager in their user profile. 
+            // As long as the emails provided in the CSV belong to valid users in the system, we accept the assignment.
 
             // Passed all validations!
             batchMobiles.add(cleanMobile);
@@ -208,7 +229,7 @@ public class CsvValidationService {
                 batchEmails.add(cleanEmail.toLowerCase());
             }
 
-            validList.add(new ValidLeadMapping(row, cleanMobile, cleanEmail, course, assignedUser, teamLeader));
+            validList.add(new ValidLeadMapping(row, cleanMobile, cleanEmail, course, assignedUser, teamLeader, manager));
         }
 
         return new ValidationResult(validList, failedList);
@@ -223,6 +244,7 @@ public class CsvValidationService {
         private Course course;
         private User assignedUser;
         private User teamLeader;
+        private User manager;
     }
 
     @lombok.Data

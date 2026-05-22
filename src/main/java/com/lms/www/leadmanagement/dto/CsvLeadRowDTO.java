@@ -18,4 +18,16 @@ public class CsvLeadRowDTO {
     private String assignedToEmail;
     private String teamLeaderEmail;
     private String status;
+    private String managerEmail;
+    private String remark;
+
+    private String totalFee;
+    private String paidAmount;
+    private String pendingAmount;
+    private String paymentMode;
+    private String paymentDate;
+    private String paymentType;
+
+    private String createdDate;
+    private String followUpDate;
 }

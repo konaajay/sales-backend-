@@ -116,7 +116,7 @@ public class DashboardStatsService {
         List<TimeSeriesStatsDTO> trend = reportService.getFilteredTrend(filter);
 
         List<DashboardProjection> distributionList = isGlobalAdmin ? leadRepository.countByStatusGlobal(start, end)
-                : leadRepository.countByStatusForUsers(userIds, start, end);
+                : (userIds.isEmpty() ? new ArrayList<>() : leadRepository.countByStatusForUsers(userIds, start, end));
 
         Map<String, Long> mappedDistribution = new HashMap<>();
         for (DashboardProjection p : distributionList) {
@@ -220,7 +220,8 @@ public class DashboardStatsService {
                 0L);
 
         // Optimized Attendance Stats using Range-Aware Daily Logs
-        List<AttendanceDaily> rangeLogs = attendanceDailyRepository.findAllByUserIdInAndDateBetween(userIdList, from, to);
+        List<AttendanceDaily> rangeLogs = userIdList.isEmpty() ? new ArrayList<>()
+                : attendanceDailyRepository.findAllByUserIdInAndDateBetween(userIdList, from, to);
         
         // Calculate global present/late/absent by summing up individual user stats
         // (will be calculated inside the performance loop to ensure consistency)
@@ -359,7 +360,7 @@ public class DashboardStatsService {
 
         Map<String, Long> statusDistribution = (isGlobalAdmin && noFilters)
                 ? leadRepository.getGlobalSummaryStats(start, end)
-                : leadRepository.getSummaryStats(userIdList, start, end);
+                : (userIdList.isEmpty() ? new HashMap<>() : leadRepository.getSummaryStats(userIdList, start, end));
         Map<String, Long> mappedDistribution = new HashMap<>();
         if (statusDistribution != null) {
             mappedDistribution.put("OPEN", asLong(statusDistribution.get("newCount")));
@@ -409,7 +410,7 @@ public class DashboardStatsService {
             boolean isPersonalHomeView = (targetUserId != null && targetUserId.equals(requester.getId()));
             if (isPersonalHomeView) {
                 monthlyTarget = targets.stream()
-                    .filter(t -> t.getType() != null && "DISTRIBUTED".equalsIgnoreCase(t.getType().name()) && t.getAssignedBy().equals(assignedSubjectId))
+                    .filter(t -> t.getType() != null && "DISTRIBUTED".equalsIgnoreCase(t.getType().name()) && Objects.equals(t.getAssignedBy(), assignedSubjectId))
                     .findFirst()
                     .map(RevenueTarget::getTargetAmount)
                     .orElseGet(() -> targets.stream()
@@ -419,7 +420,7 @@ public class DashboardStatsService {
                         .orElse(targets.get(0).getTargetAmount()));
             } else {
                 monthlyTarget = targets.stream()
-                    .filter(t -> t.getType() != null && "ASSIGNED".equalsIgnoreCase(t.getType().name()) && !t.getAssignedBy().equals(assignedSubjectId))
+                    .filter(t -> t.getType() != null && "ASSIGNED".equalsIgnoreCase(t.getType().name()) && !Objects.equals(t.getAssignedBy(), assignedSubjectId))
                     .findFirst()
                     .map(RevenueTarget::getTargetAmount)
                     .orElseGet(() -> targets.stream()
@@ -460,9 +461,16 @@ public class DashboardStatsService {
             Map<Long, BigDecimal> revenueMap = new HashMap<>();
             if (revenuePerUser != null) {
                 for (Map<String, Object> m : revenuePerUser) {
-                    Long uid = (Long) m.get("userId");
-                    BigDecimal rev = (BigDecimal) m.get("totalRevenue");
-                    if (uid != null) revenueMap.put(uid, rev != null ? rev : BigDecimal.ZERO);
+                    Object userIdObj = m.get("userId");
+                    if (userIdObj == null) continue;
+                    Long uid = asLong(userIdObj);
+                    
+                    Object revVal = m.get("amount");
+                    if (revVal == null) revVal = m.get("totalRevenue");
+                    if (revVal == null) revVal = m.get("AMOUNT");
+                    BigDecimal rev = asBigDecimal(revVal);
+                    
+                    revenueMap.put(uid, rev);
                 }
             }
 
@@ -549,7 +557,9 @@ public class DashboardStatsService {
         List<Map<String, Object>> result = new ArrayList<>();
 
         for (Map<String, Object> data : revenueData) {
-            Long uid = (Long) data.get("userId");
+            Object userIdObj = data.get("userId");
+            if (userIdObj == null) continue;
+            Long uid = asLong(userIdObj);
             userRepository.findById(uid).ifPresent(u -> {
                 Map<String, Object> row = new HashMap<>(data);
                 row.put("userName", u.getName());
@@ -576,5 +586,16 @@ public class DashboardStatsService {
         if (val instanceof Number)
             return ((Number) val).longValue();
         return 0L;
+    }
+
+    private BigDecimal asBigDecimal(Object val) {
+        if (val == null) return BigDecimal.ZERO;
+        if (val instanceof BigDecimal) return (BigDecimal) val;
+        if (val instanceof Number) return new BigDecimal(((Number) val).toString());
+        try {
+            return new BigDecimal(val.toString());
+        } catch (Exception e) {
+            return BigDecimal.ZERO;
+        }
     }
 }

@@ -49,25 +49,73 @@ public class CsvLeadImportService {
                 currentRowNum++;
                 totalRows++;
 
-                // Ensure row has at least basic columns: name, email, mobile
-                if (nextLine.length < 3) {
+                // Ensure row has at least basic columns
+                if (nextLine.length < 2) {
                     parsingFailures.add(FailedRow.builder()
                             .rowNumber(currentRowNum)
                             .name(nextLine.length > 0 ? nextLine[0] : "")
                             .email(nextLine.length > 1 ? nextLine[1] : "")
-                            .mobile(nextLine.length > 2 ? nextLine[2] : "")
-                            .reason("Malformed row: Insufficient columns (Expected at least Name, Email, Mobile)")
+                            .reason("Malformed row: Insufficient columns (Expected at least Date and Name)")
                             .build());
                     continue;
                 }
 
-                String name = nextLine[0] != null ? nextLine[0].trim() : "";
-                String email = nextLine[1] != null ? nextLine[1].trim() : "";
-                String mobile = nextLine[2] != null ? nextLine[2].trim() : "";
-                String courseName = nextLine.length > 3 && nextLine[3] != null ? nextLine[3].trim() : "";
-                String assignedToEmail = nextLine.length > 4 && nextLine[4] != null ? nextLine[4].trim() : "";
-                String teamLeaderEmail = nextLine.length > 5 && nextLine[5] != null ? nextLine[5].trim() : "";
-                String status = nextLine.length > 6 && nextLine[6] != null ? nextLine[6].trim() : "OLD_LEAD";
+                // Read columns based on layout length dynamically
+                String createdDate = "";
+                String name = "";
+                String courseName = "";
+                String email = "";
+                String mobile = "";
+                String assignedToEmail = "";
+                String teamLeaderEmail = "";
+                String managerEmail = "";
+                String totalFee = "";
+                String paidAmount = "";
+                String pendingAmount = "";
+                String paymentMode = "";
+                String paymentDate = "";
+                String paymentType = "";
+                String followUpDate = "";
+                String status = "OLD_LEAD";
+                String remark = "";
+
+                if (nextLine.length == 13) {
+                    // Old 13-column layout
+                    createdDate = nextLine[0] != null ? nextLine[0].trim() : "";
+                    name = nextLine.length > 1 && nextLine[1] != null ? nextLine[1].trim() : "";
+                    courseName = nextLine.length > 2 && nextLine[2] != null ? nextLine[2].trim() : "";
+                    email = nextLine.length > 3 && nextLine[3] != null ? nextLine[3].trim() : "";
+                    mobile = ""; // No mobile column in this format, auto-generated in validation
+                    assignedToEmail = nextLine.length > 4 && nextLine[4] != null ? nextLine[4].trim() : "";
+                    totalFee = nextLine.length > 5 && nextLine[5] != null ? nextLine[5].trim() : "";
+                    paidAmount = nextLine.length > 6 && nextLine[6] != null ? nextLine[6].trim() : "";
+                    pendingAmount = nextLine.length > 7 && nextLine[7] != null ? nextLine[7].trim() : "";
+                    paymentMode = nextLine.length > 8 && nextLine[8] != null ? nextLine[8].trim() : "";
+                    paymentDate = createdDate; // Reuse createdDate as paymentDate
+                    paymentType = nextLine.length > 9 && nextLine[9] != null ? nextLine[9].trim() : "";
+                    followUpDate = nextLine.length > 10 && nextLine[10] != null ? nextLine[10].trim() : "";
+                    status = nextLine.length > 11 && nextLine[11] != null ? nextLine[11].trim() : "OLD_LEAD";
+                    remark = nextLine.length > 12 && nextLine[12] != null ? nextLine[12].trim() : "";
+                } else {
+                    // New/explicit 17-column layout (default)
+                    createdDate = nextLine[0] != null ? nextLine[0].trim() : "";
+                    name = nextLine.length > 1 && nextLine[1] != null ? nextLine[1].trim() : "";
+                    courseName = nextLine.length > 2 && nextLine[2] != null ? nextLine[2].trim() : "";
+                    email = nextLine.length > 3 && nextLine[3] != null ? nextLine[3].trim() : "";
+                    mobile = nextLine.length > 4 && nextLine[4] != null ? nextLine[4].trim() : "";
+                    assignedToEmail = nextLine.length > 5 && nextLine[5] != null ? nextLine[5].trim() : "";
+                    teamLeaderEmail = nextLine.length > 6 && nextLine[6] != null ? nextLine[6].trim() : "";
+                    managerEmail = nextLine.length > 7 && nextLine[7] != null ? nextLine[7].trim() : "";
+                    totalFee = nextLine.length > 8 && nextLine[8] != null ? nextLine[8].trim() : "";
+                    paidAmount = nextLine.length > 9 && nextLine[9] != null ? nextLine[9].trim() : "";
+                    pendingAmount = nextLine.length > 10 && nextLine[10] != null ? nextLine[10].trim() : "";
+                    paymentMode = nextLine.length > 11 && nextLine[11] != null ? nextLine[11].trim() : "";
+                    paymentDate = nextLine.length > 12 && nextLine[12] != null ? nextLine[12].trim() : "";
+                    paymentType = nextLine.length > 13 && nextLine[13] != null ? nextLine[13].trim() : "";
+                    followUpDate = nextLine.length > 14 && nextLine[14] != null ? nextLine[14].trim() : "";
+                    status = nextLine.length > 15 && nextLine[15] != null ? nextLine[15].trim() : "OLD_LEAD";
+                    remark = nextLine.length > 16 && nextLine[16] != null ? nextLine[16].trim() : "";
+                }
 
                 CsvLeadRowDTO rowDTO = CsvLeadRowDTO.builder()
                         .rowNumber(currentRowNum)
@@ -78,6 +126,16 @@ public class CsvLeadImportService {
                         .assignedToEmail(assignedToEmail)
                         .teamLeaderEmail(teamLeaderEmail)
                         .status(status)
+                        .managerEmail(managerEmail)
+                        .remark(remark)
+                        .totalFee(totalFee)
+                        .paidAmount(paidAmount)
+                        .pendingAmount(pendingAmount)
+                        .paymentMode(paymentMode)
+                        .paymentDate(paymentDate)
+                        .paymentType(paymentType)
+                        .createdDate(createdDate)
+                        .followUpDate(followUpDate)
                         .build();
 
                 parsedRows.add(rowDTO);
