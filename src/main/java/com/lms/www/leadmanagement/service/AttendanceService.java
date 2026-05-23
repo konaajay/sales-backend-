@@ -256,7 +256,7 @@ public class AttendanceService {
         sessionRepository.save(session);
 
         LocalDate date = session.getCheckInTime().toLocalDate();
-        AttendanceDaily daily = dailyRepository.findSingleByUserIdAndDate(session.getUser().getId(), date)
+        AttendanceDaily daily = dailyRepository.findFirstByUserIdAndDate(session.getUser().getId(), date)
                 .orElse(AttendanceDaily.builder().user(session.getUser()).date(date).build());
         
         daily.setLoginTime(session.getCheckInTime());
@@ -455,7 +455,7 @@ public class AttendanceService {
 
     @Transactional
     public void updateDailyNote(Long userId, LocalDate date, String note) {
-        AttendanceDaily daily = dailyRepository.findSingleByUserIdAndDate(userId, date)
+        AttendanceDaily daily = dailyRepository.findFirstByUserIdAndDate(userId, date)
             .orElseGet(() -> {
                 User user = userRepository.findById(userId)
                     .orElseThrow(() -> new ResourceNotFoundException("User not found"));
@@ -468,6 +468,164 @@ public class AttendanceService {
         dailyRepository.save(daily);
     }
     
-    public AttendancePreviewResponse calculatePreview(AttendancePreviewRequest request) { return new AttendancePreviewResponse(); }
-    public void saveManualEntry(AttendancePreviewRequest request) {}
+    @Transactional(readOnly = true)
+    public AttendancePreviewResponse calculatePreview(AttendancePreviewRequest request) {
+        if (request.getUserId() == null || request.getDate() == null) {
+            throw new IllegalArgumentException("User ID and Date are required");
+        }
+        User user = userRepository.findById(request.getUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        
+        AttendanceShift shift = user.getShift();
+        
+        String reqStatus = request.getStatus();
+        if (reqStatus != null && (reqStatus.equalsIgnoreCase("HOLIDAY") || reqStatus.equalsIgnoreCase("LEAVE") || reqStatus.equalsIgnoreCase("ABSENT"))) {
+            return AttendancePreviewResponse.builder()
+                    .workedMinutes(0)
+                    .breakMinutes(0)
+                    .effectiveMinutes(0)
+                    .status(reqStatus.toUpperCase())
+                    .isLate(false)
+                    .build();
+        }
+
+        int minFullDay = shift != null ? shift.getMinFullDayMinutes() : 480;
+        int minHalfDay = shift != null ? shift.getMinHalfDayMinutes() : 240;
+        LocalTime shiftStart = shift != null ? shift.getStartTime() : LocalTime.of(9, 30);
+        int grace = shift != null ? shift.getGraceMinutes() : 0;
+
+        LocalDateTime login = request.getLoginTime();
+        LocalDateTime logout = request.getLogoutTime();
+
+        long workedMinutes = 0;
+        long breakMinutes = 0;
+        boolean isLate = false;
+        String status = "ABSENT";
+
+        if (login != null && logout != null) {
+            long totalMinutes = Duration.between(login, logout).toMinutes();
+            breakMinutes = request.getBreakMinutes() != null 
+                    ? request.getBreakMinutes() 
+                    : calculateBreakOverlap(login.toLocalTime(), logout.toLocalTime(), shift);
+            workedMinutes = Math.max(0, totalMinutes - breakMinutes);
+
+            if (request.getWorkMinutes() != null) {
+                workedMinutes = request.getWorkMinutes();
+            }
+
+            isLate = login.toLocalTime().isAfter(shiftStart.plusMinutes(grace)) || "LATE".equalsIgnoreCase(reqStatus);
+
+            if (reqStatus != null && !reqStatus.trim().isEmpty() && !reqStatus.equalsIgnoreCase("AUTO")) {
+                status = reqStatus.toUpperCase();
+            } else {
+                if (workedMinutes >= minFullDay) {
+                    status = "PRESENT";
+                } else if (workedMinutes >= minHalfDay) {
+                    status = "HALF_DAY";
+                } else {
+                    status = "SHORT_DAY";
+                }
+            }
+        } else {
+            // Time-less entry
+            if (reqStatus != null && !reqStatus.trim().isEmpty() && !reqStatus.equalsIgnoreCase("AUTO")) {
+                status = reqStatus.toUpperCase();
+            } else {
+                status = "ABSENT";
+            }
+            isLate = "LATE".equalsIgnoreCase(status);
+            if (status.equals("PRESENT")) {
+                workedMinutes = minFullDay;
+            } else if (status.equals("HALF_DAY")) {
+                workedMinutes = minHalfDay;
+            } else if (status.equals("SHORT_DAY")) {
+                workedMinutes = minHalfDay / 2;
+            } else if (status.equals("LATE")) {
+                workedMinutes = minFullDay;
+            }
+        }
+
+        return AttendancePreviewResponse.builder()
+                .workedMinutes(workedMinutes)
+                .breakMinutes(breakMinutes)
+                .effectiveMinutes(workedMinutes)
+                .status(status)
+                .isLate(isLate)
+                .build();
+    }
+
+    @Transactional
+    public void saveManualEntry(AttendancePreviewRequest request) {
+        if (request.getUserId() == null || request.getDate() == null) {
+            throw new IllegalArgumentException("User ID and Date are required");
+        }
+        User user = userRepository.findById(request.getUserId())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        
+        AttendancePreviewResponse preview = calculatePreview(request);
+        String status = preview.getStatus();
+        
+        // Find existing sessions on that date
+        List<AttendanceSession> sessions = sessionRepository.findSessionsForDate(
+                user.getId(), request.getDate().atStartOfDay(), request.getDate().atTime(23, 59, 59));
+        
+        if (status.equals("ABSENT") || status.equals("HOLIDAY") || status.equals("LEAVE") || request.getLoginTime() == null || request.getLogoutTime() == null) {
+            // Delete existing sessions so we fall back to daily record
+            sessionRepository.deleteAll(sessions);
+            
+            // Create or update daily record
+            AttendanceDaily daily = dailyRepository.findFirstByUserIdAndDate(user.getId(), request.getDate())
+                    .orElseGet(() -> AttendanceDaily.builder().user(user).date(request.getDate()).build());
+            daily.setLoginTime(null);
+            daily.setLogoutTime(null);
+            daily.setTotalWorkMinutes((int) preview.getWorkedMinutes());
+            daily.setTotalBreakMinutes(0);
+            daily.setShortBreakMinutes(0);
+            daily.setLongBreakMinutes(0);
+            daily.setTotalOutsideMinutes(0);
+            daily.setLate(preview.isLate());
+            daily.setLateMinutes(preview.isLate() ? 30 : 0);
+            daily.setStatus(status);
+            dailyRepository.save(daily);
+        } else {
+            // It is PRESENT, HALF_DAY, SHORT_DAY, or other active status with times
+            AttendanceSession session = sessions.isEmpty() ? new AttendanceSession() : sessions.get(0);
+            session.setUser(user);
+            if (session.getOffice() == null) {
+                session.setOffice(user.getAssignedOffice() != null ? user.getAssignedOffice() : officeRepository.findAll().stream().findFirst().orElse(null));
+            }
+            session.setCheckInTime(request.getLoginTime());
+            session.setCheckOutTime(request.getLogoutTime());
+            session.setStatus(AttendanceStatus.PUNCHED_OUT);
+            session.setLastSeenTime(request.getLogoutTime());
+            
+            long totalSeconds = request.getLoginTime() != null && request.getLogoutTime() != null
+                    ? Duration.between(request.getLoginTime(), request.getLogoutTime()).toSeconds()
+                    : 0L;
+            long breakSeconds = preview.getBreakMinutes() * 60;
+            session.setTotalWorkSeconds(Math.max(0, totalSeconds - breakSeconds));
+            session.setTotalBreakSeconds(breakSeconds);
+            session.setLate(preview.isLate());
+            
+            LocalTime shiftStart = user.getShift() != null ? user.getShift().getStartTime() : LocalTime.of(9, 30);
+            if (preview.isLate() && request.getLoginTime() != null) {
+                session.setLateMinutes((int) Duration.between(shiftStart, request.getLoginTime().toLocalTime()).toMinutes());
+            } else {
+                session.setLateMinutes(0);
+            }
+            sessionRepository.save(session);
+
+            // Update or create daily record
+            AttendanceDaily daily = dailyRepository.findFirstByUserIdAndDate(user.getId(), request.getDate())
+                    .orElseGet(() -> AttendanceDaily.builder().user(user).date(request.getDate()).build());
+            daily.setLoginTime(request.getLoginTime());
+            daily.setLogoutTime(request.getLogoutTime());
+            daily.setTotalWorkMinutes((int) preview.getWorkedMinutes());
+            daily.setTotalBreakMinutes((int) preview.getBreakMinutes());
+            daily.setLate(preview.isLate());
+            daily.setLateMinutes(session.getLateMinutes());
+            daily.setStatus(status);
+            dailyRepository.save(daily);
+        }
+    }
 }

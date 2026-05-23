@@ -11,8 +11,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import com.lms.www.leadmanagement.entity.Payment;
 import com.lms.www.leadmanagement.entity.StudentFee;
+import com.lms.www.leadmanagement.entity.LeadTask;
 import com.lms.www.leadmanagement.repository.PaymentRepository;
 import com.lms.www.leadmanagement.repository.StudentFeeRepository;
+import com.lms.www.leadmanagement.repository.LeadTaskRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -34,6 +36,9 @@ public class LeadAssignmentService {
 
     @Autowired
     private PaymentRepository paymentRepository;
+
+    @Autowired
+    private LeadTaskRepository leadTaskRepository;
 
     @Transactional
     public List<Lead> assignAndBatchSave(List<ValidLeadMapping> validMappings, String batchId) {
@@ -80,9 +85,10 @@ public class LeadAssignmentService {
         List<Lead> savedLeads = leadRepository.saveAll(leadsToSave);
         log.info("Successfully batch saved {} leads for batchId {}", savedLeads.size(), batchId);
 
-        // Process payments for imported leads
+        // Process payments and tasks for imported leads
         List<StudentFee> feesToSave = new ArrayList<>();
         List<Payment> paymentsToSave = new ArrayList<>();
+        List<LeadTask> tasksToSave = new ArrayList<>();
 
         for (int i = 0; i < savedLeads.size(); i++) {
             Lead savedLead = savedLeads.get(i);
@@ -150,6 +156,13 @@ public class LeadAssignmentService {
                         paymentsToSave.add(payment);
                     }
 
+                    // Clean up any stale/orphan tasks for this lead ID
+                    List<LeadTask> existingTasks = leadTaskRepository.findByLeadId(savedLead.getId());
+                    if (existingTasks != null && !existingTasks.isEmpty()) {
+                        log.info("Cleaning up {} stale task records for lead id: {}", existingTasks.size(), savedLead.getId());
+                        leadTaskRepository.deleteAll(existingTasks);
+                    }
+
                     if (pendingAmount.compareTo(BigDecimal.ZERO) > 0) {
                         LocalDateTime due = savedLead.getFollowUpDate() != null 
                                 ? savedLead.getFollowUpDate() 
@@ -167,6 +180,28 @@ public class LeadAssignmentService {
                                 .updatedBy(currentUser)
                                 .build();
                         paymentsToSave.add(pendingPayment);
+
+                        // Automatically create EMI_COLLECTION task for this pending installment
+                        LeadTask installmentTask = LeadTask.builder()
+                                .lead(savedLead)
+                                .title("EMI Collection - Planned")
+                                .dueDate(due)
+                                .status(LeadTask.TaskStatus.PENDING)
+                                .taskType("EMI_COLLECTION")
+                                .assignedTo(savedLead.getAssignedTo())
+                                .build();
+                        tasksToSave.add(installmentTask);
+                    } else if (savedLead.getFollowUpDate() != null) {
+                        // Create regular FOLLOW_UP task if no pending installment but followUpDate is present
+                        LeadTask followUpTask = LeadTask.builder()
+                                .lead(savedLead)
+                                .title("Follow Up - Planned")
+                                .dueDate(savedLead.getFollowUpDate())
+                                .status(LeadTask.TaskStatus.PENDING)
+                                .taskType("FOLLOW_UP")
+                                .assignedTo(savedLead.getAssignedTo())
+                                .build();
+                        tasksToSave.add(followUpTask);
                     }
                 } catch (Exception e) {
                     log.error("Failed to parse payment info for lead {}, skipping payment creation: {}", savedLead.getId(), e.getMessage());
@@ -176,6 +211,7 @@ public class LeadAssignmentService {
 
         if (!feesToSave.isEmpty()) studentFeeRepository.saveAll(feesToSave);
         if (!paymentsToSave.isEmpty()) paymentRepository.saveAll(paymentsToSave);
+        if (!tasksToSave.isEmpty()) leadTaskRepository.saveAll(tasksToSave);
 
         return savedLeads;
     }

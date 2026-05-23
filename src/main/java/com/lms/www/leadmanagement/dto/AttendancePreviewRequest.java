@@ -35,4 +35,5 @@ public class AttendancePreviewRequest {
     private java.time.LocalDate date;
     private Integer workMinutes;
     private Integer breakMinutes;
+    private String status;
 }

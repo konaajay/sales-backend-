@@ -98,4 +98,17 @@ public class AttendanceController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
         return ResponseEntity.ok(attendanceService.getMyLogs(principal.getId(), from, to));
     }
+
+    @PostMapping("/manual")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<Void> saveManualEntry(@RequestBody AttendancePreviewRequest request) {
+        attendanceService.saveManualEntry(request);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/preview")
+    @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    public ResponseEntity<AttendancePreviewResponse> previewManualEntry(@RequestBody AttendancePreviewRequest request) {
+        return ResponseEntity.ok(attendanceService.calculatePreview(request));
+    }
 }

@@ -27,6 +27,8 @@ public interface AttendanceDailyRepository extends JpaRepository<AttendanceDaily
                 return findByUserIdAndDate(userId, date).stream().findFirst();
         }
 
+        Optional<AttendanceDaily> findFirstByUserIdAndDate(Long userId, LocalDate date);
+
         // ✅ Safe existence check
         @Query("""
                             SELECT COUNT(a) > 0 FROM AttendanceDaily a

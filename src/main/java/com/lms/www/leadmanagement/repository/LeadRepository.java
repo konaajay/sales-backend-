@@ -147,7 +147,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
             "sum(case when UPPER(l.status) = 'REFUND' then 1 else 0 end) as refundCount, " +
             "sum(case when UPPER(l.status) IN ('LOST', 'NOT_INTERESTED') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as lostCount) " +
             "FROM Lead l LEFT JOIN l.assignedTo a " +
-            "WHERE (a.id IN :userIds OR l.createdBy.id IN :userIds) " +
+            "WHERE (a.id IN :userIds OR (a IS NULL AND l.createdBy.id IN :userIds)) " +
             "AND l.createdAt BETWEEN :start AND :end")
     Map<String, Long> getSummaryStats(
             @Param("userIds") Collection<Long> userIds,
