@@ -206,7 +206,7 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.success(adminService.getAssociates(teamId, managerId)));
     }
 
-    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'MANAGER', 'TEAM_LEADER')")
     @GetMapping("/team-tree")
     public ResponseEntity<List<UserDTO>> getTeamTree() {
         return ResponseEntity.ok(adminService.getStaffTree());

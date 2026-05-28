@@ -37,22 +37,28 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("SELECT u FROM User u WHERE ((u.manager IS NULL AND u.supervisor IS NULL) OR u.role.name = 'ADMIN' OR u.role.name = 'ROLE_ADMIN') AND u.role.name NOT IN ('ASSOCIATE', 'BDA')")
     List<User> findHierarchyRoots();
 
-    // Fetch full hierarchy of subordinates using a Recursive CTE (MySQL 8.0+)
-    @Query(value = "WITH RECURSIVE Subordinates AS (" +
-            "  SELECT id, CAST(id AS CHAR(1000)) as path, 1 as depth FROM users WHERE id = :managerId " +
-            "  UNION ALL " +
-            "  SELECT u.id, CONCAT(s.path, ',', u.id), s.depth + 1 " +
-            "  FROM users u " +
-            "  INNER JOIN Subordinates s ON (u.manager_id = s.id OR u.supervisor_id = s.id) " +
-            "  WHERE FIND_IN_SET(u.id, s.path) = 0 AND s.depth < 20 " +
-            ") SELECT DISTINCT id FROM Subordinates WHERE id != :managerId", nativeQuery = true)
-    List<Long> findSubordinateIds(@Param("managerId") Long managerId);
+    @Query("SELECT u.id FROM User u WHERE u.manager.id = :id OR u.supervisor.id = :id")
+    List<Long> findDirectReports(@Param("id") Long id);
 
-    @Query("SELECT COUNT(u) FROM User u WHERE u.active = true AND (u.joiningDate IS NULL OR u.joiningDate <= :date)")
-    long countActiveUsersByDate(@Param("date") java.time.LocalDate date);
+    @Query("SELECT u.id FROM User u WHERE u.manager.id IN :ids OR u.supervisor.id IN :ids")
+    List<Long> findDirectReportsByMultipleIds(@Param("ids") List<Long> ids);
 
-    @Query("SELECT COUNT(u) FROM User u WHERE u.active = true AND u.id IN :userIds AND (u.joiningDate IS NULL OR u.joiningDate <= :date)")
-    long countActiveUsersByDateIn(@Param("userIds") java.util.Collection<Long> userIds,
+    default List<Long> findSubordinateIds(Long managerId) {
+        java.util.Set<Long> result = new java.util.HashSet<>();
+        java.util.List<Long> currentLevel = findDirectReports(managerId);
+        
+        while (currentLevel != null && !currentLevel.isEmpty()) {
+            result.addAll(currentLevel);
+            currentLevel = findDirectReportsByMultipleIds(new java.util.ArrayList<>(currentLevel));
+            currentLevel.removeAll(result);
+        }
+        return new java.util.ArrayList<>(result);
+    }
+
+    @Query("SELECT COUNT(u) FROM User u WHERE u.active = true AND (:isGlobal = true OR u.id IN :userIds) AND (u.joiningDate IS NULL OR u.joiningDate <= :date)")
+    long countActiveUsersByDate(
+            @Param("isGlobal") boolean isGlobal,
+            @Param("userIds") java.util.Collection<Long> userIds,
             @Param("date") java.time.LocalDate date);
 
     @Query("SELECT u.id FROM User u")

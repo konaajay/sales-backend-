@@ -75,71 +75,78 @@ public class DashboardStatsService {
 
     public DashboardSummaryDTO getUnifiedSummary(User requester, LocalDate from, LocalDate to, Long targetUserId,
             Long teamId, Long managerId) {
-        if (requester == null)
-            return null;
+        try {
+            if (requester == null)
+                return null;
 
-        User user = userRepository.findById(requester.getId()).orElse(requester);
-        LocalDateTime start = (from != null ? from : LocalDate.now().minusDays(30)).atStartOfDay();
-        LocalDateTime end = (to != null ? to : LocalDate.now()).atTime(LocalTime.MAX);
+            User user = userRepository.findById(requester.getId()).orElse(requester);
+            LocalDateTime start = (from != null ? from : LocalDate.now().minusDays(30)).atStartOfDay();
+            LocalDateTime end = (to != null ? to : LocalDate.now()).atTime(LocalTime.MAX);
 
-        Set<Long> userIds;
-        if (targetUserId != null && targetUserId > 0) {
-            securityService.validateAccess(user, targetUserId);
-            userIds = new HashSet<>(Set.of(targetUserId));
-        } else {
-            userIds = new HashSet<>(securityService.getScopedUserIds(user, managerId, teamId));
-            // Only add self (Admin/Manager) to the count if we are viewing the global/default scope
-            boolean isFiltered = managerId != null || teamId != null;
-            if (!isFiltered) {
-                userIds.add(user.getId());
+            Set<Long> userIds;
+            if (targetUserId != null && targetUserId > 0) {
+                securityService.validateAccess(user, targetUserId);
+                userIds = new HashSet<>(Set.of(targetUserId));
+            } else {
+                userIds = new HashSet<>(securityService.getScopedUserIds(user, managerId, teamId));
+                // Only add self (Admin/Manager) to the count if we are viewing the global/default scope
+                boolean isFiltered = managerId != null || teamId != null;
+                if (!isFiltered) {
+                    userIds.add(user.getId());
+                }
             }
+            
+            log.info("Dashboard getUnifiedSummary called. userIds={}", userIds);
+
+            boolean isFiltered = targetUserId != null || teamId != null || managerId != null;
+            boolean isGlobalAdmin = securityService.isAdmin(user) && !isFiltered;
+
+            DashboardStatsDTO stats = getStats(userIds, from != null ? from : LocalDate.now().minusDays(30),
+                    to != null ? to : LocalDate.now(), isGlobalAdmin, user, targetUserId,
+                    teamId != null ? teamId : managerId);
+
+            ReportFilterDTO filter = ReportFilterDTO.builder()
+                    .fromDate(from != null ? from : LocalDate.now().minusDays(30))
+                    .toDate(to != null ? to : LocalDate.now())
+                    .build();
+            if (targetUserId != null)
+                filter.setUserId(targetUserId);
+            else if (teamId != null)
+                filter.setTeamLeaderId(teamId);
+            else if (managerId != null)
+                filter.setManagerId(managerId);
+
+            List<TimeSeriesStatsDTO> trend = reportService.getFilteredTrend(filter);
+
+            List<DashboardProjection> distributionList = isGlobalAdmin ? leadRepository.countByStatusGlobal(start, end)
+                    : (userIds.isEmpty() ? new ArrayList<>() : leadRepository.countByStatusForUsers(userIds, start, end));
+
+            Map<String, Long> mappedDistribution = new HashMap<>();
+            for (DashboardProjection p : distributionList) {
+                if (p.getStatus() != null)
+                    mappedDistribution.put(p.getStatus().toUpperCase(), p.getCount());
+            }
+
+            mappedDistribution.putIfAbsent("OPEN", 0L);
+            mappedDistribution.putIfAbsent("CONTACTED", 0L);
+            mappedDistribution.putIfAbsent("FOLLOW_UP", mappedDistribution.getOrDefault("FOLLOWUP", 0L) + mappedDistribution.getOrDefault("EMI_FOLLOWUP", 0L));
+            mappedDistribution.putIfAbsent("CONVERTED",
+                    mappedDistribution.getOrDefault("PAID", 0L) + mappedDistribution.getOrDefault("SUCCESS", 0L));
+            mappedDistribution.put("DNP",
+                    mappedDistribution.getOrDefault("DNP", 0L) +
+                    mappedDistribution.getOrDefault("SWITCH_OFF", 0L) +
+                    mappedDistribution.getOrDefault("SWITCHED_OFF", 0L) +
+                    mappedDistribution.getOrDefault("OUT_OF_COVERAGE", 0L) +
+                    mappedDistribution.getOrDefault("OUT_OF_COVERAGE_AREA", 0L) +
+                    mappedDistribution.getOrDefault("WRONG_NUMBER", 0L) +
+                    mappedDistribution.getOrDefault("NOT_RESPONDING", 0L));
+
+            return DashboardSummaryDTO.builder().stats(stats).trend(trend).statusDistribution(mappedDistribution)
+                    .performance(stats.getPerformance()).build();
+        } catch (Exception e) {
+            log.error("Dashboard failed to generate unified summary for requester: " + (requester != null ? requester.getId() : "null"), e);
+            throw e;
         }
-
-        boolean isFiltered = targetUserId != null || teamId != null || managerId != null;
-        boolean isGlobalAdmin = securityService.isAdmin(user) && !isFiltered;
-
-        DashboardStatsDTO stats = getStats(userIds, from != null ? from : LocalDate.now().minusDays(30),
-                to != null ? to : LocalDate.now(), isGlobalAdmin, user, targetUserId,
-                teamId != null ? teamId : managerId);
-
-        ReportFilterDTO filter = ReportFilterDTO.builder()
-                .fromDate(from != null ? from : LocalDate.now().minusDays(30))
-                .toDate(to != null ? to : LocalDate.now())
-                .build();
-        if (targetUserId != null)
-            filter.setUserId(targetUserId);
-        else if (teamId != null)
-            filter.setTeamLeaderId(teamId);
-        else if (managerId != null)
-            filter.setManagerId(managerId);
-
-        List<TimeSeriesStatsDTO> trend = reportService.getFilteredTrend(filter);
-
-        List<DashboardProjection> distributionList = isGlobalAdmin ? leadRepository.countByStatusGlobal(start, end)
-                : (userIds.isEmpty() ? new ArrayList<>() : leadRepository.countByStatusForUsers(userIds, start, end));
-
-        Map<String, Long> mappedDistribution = new HashMap<>();
-        for (DashboardProjection p : distributionList) {
-            if (p.getStatus() != null)
-                mappedDistribution.put(p.getStatus().toUpperCase(), p.getCount());
-        }
-
-        mappedDistribution.putIfAbsent("OPEN", 0L);
-        mappedDistribution.putIfAbsent("CONTACTED", 0L);
-        mappedDistribution.putIfAbsent("FOLLOW_UP", mappedDistribution.getOrDefault("FOLLOWUP", 0L) + mappedDistribution.getOrDefault("EMI_FOLLOWUP", 0L));
-        mappedDistribution.putIfAbsent("CONVERTED",
-                mappedDistribution.getOrDefault("PAID", 0L) + mappedDistribution.getOrDefault("SUCCESS", 0L));
-        mappedDistribution.put("DNP",
-                mappedDistribution.getOrDefault("DNP", 0L) +
-                mappedDistribution.getOrDefault("SWITCH_OFF", 0L) +
-                mappedDistribution.getOrDefault("SWITCHED_OFF", 0L) +
-                mappedDistribution.getOrDefault("OUT_OF_COVERAGE", 0L) +
-                mappedDistribution.getOrDefault("OUT_OF_COVERAGE_AREA", 0L) +
-                mappedDistribution.getOrDefault("WRONG_NUMBER", 0L) +
-                mappedDistribution.getOrDefault("NOT_RESPONDING", 0L));
-
-        return DashboardSummaryDTO.builder().stats(stats).trend(trend).statusDistribution(mappedDistribution)
-                .performance(stats.getPerformance()).build();
     }
 
     public DashboardStatsDTO getStats(Collection<Long> userIds, LocalDate from, LocalDate to, boolean isGlobalAdmin,
@@ -303,7 +310,7 @@ public class DashboardStatsService {
                         : ticketRepository.countByUserIdInAndStatusIn(userIdList, List.of(TicketStatus.CLOSED)),
                 0L);
 
-        final List<Long> finalQueryUserIds = (targetUserId != null) ? List.of(targetUserId) : userIdList;
+        final List<Long> finalQueryUserIds = (targetUserId != null) ? List.of(targetUserId) : (userIdList.isEmpty() ? List.of(-1L) : new ArrayList<>(userIdList));
         final boolean noFilters = targetUserId == null && teamId == null;
 
         CompletableFuture<Long> interestedCountFuture = safeAsync(
@@ -326,25 +333,17 @@ public class DashboardStatsService {
                         : leadRepository.countSquadConversionsInPeriod(finalQueryUserIds, successStatuses, start, end),
                 0L);
 
-        CompletableFuture<List<Map<String, Object>>> leadTrendFuture = safeAsync(
-                () -> (isGlobalAdmin && noFilters)
-                        ? leadRepository.getGlobalDailyLeadTrend(start, end)
-                        : leadRepository.getDailyLeadTrendByIds(finalQueryUserIds, start, end),
+        CompletableFuture<List<com.lms.www.leadmanagement.dto.TrendProjection>> leadTrendFuture = safeAsync(
+                () -> leadRepository.getDailyLeadTrend(isGlobalAdmin && noFilters, finalQueryUserIds, start, end),
                 new ArrayList<>());
-        CompletableFuture<List<Map<String, Object>>> convertedTrendFuture = safeAsync(
-                () -> (isGlobalAdmin && noFilters)
-                        ? leadRepository.getGlobalDailyConvertedTrend(successStatuses, start, end)
-                        : leadRepository.getDailyConvertedTrendByIds(finalQueryUserIds, successStatuses, start, end),
+        CompletableFuture<List<com.lms.www.leadmanagement.dto.TrendProjection>> convertedTrendFuture = safeAsync(
+                () -> leadRepository.getDailyConvertedTrend(isGlobalAdmin && noFilters, finalQueryUserIds, successStatuses, start, end),
                 new ArrayList<>());
-        CompletableFuture<List<Map<String, Object>>> lostTrendFuture = safeAsync(
-                () -> (isGlobalAdmin && noFilters)
-                        ? leadRepository.getGlobalDailyLostTrend(lostStatuses, start, end)
-                        : leadRepository.getDailyLostTrendByIds(finalQueryUserIds, lostStatuses, start, end),
+        CompletableFuture<List<com.lms.www.leadmanagement.dto.TrendProjection>> lostTrendFuture = safeAsync(
+                () -> leadRepository.getDailyLostTrend(isGlobalAdmin && noFilters, finalQueryUserIds, lostStatuses, start, end),
                 new ArrayList<>());
-        CompletableFuture<List<Map<String, Object>>> revenueTrendFuture = safeAsync(
-                () -> (isGlobalAdmin && noFilters)
-                        ? paymentRepository.getGlobalDailyRevenueTrend(start, end)
-                        : paymentRepository.getDailyRevenueTrendByIds(finalQueryUserIds, start, end),
+        CompletableFuture<List<com.lms.www.leadmanagement.dto.TrendProjection>> revenueTrendFuture = safeAsync(
+                () -> paymentRepository.getDailyRevenueTrend(isGlobalAdmin && noFilters, finalQueryUserIds, successStatuses, start, end),
                 new ArrayList<>());
 
         try {
@@ -358,7 +357,7 @@ public class DashboardStatsService {
         } catch (Exception e) {
         }
 
-        Map<String, Long> statusDistribution = (isGlobalAdmin && noFilters)
+        Map<String, Object> statusDistribution = (isGlobalAdmin && noFilters)
                 ? leadRepository.getGlobalSummaryStats(start, end)
                 : (userIdList.isEmpty() ? new HashMap<>() : leadRepository.getSummaryStats(userIdList, start, end));
         Map<String, Long> mappedDistribution = new HashMap<>();
@@ -374,21 +373,16 @@ public class DashboardStatsService {
         }
 
         Map<String, Map<String, Object>> trendMap = new TreeMap<>();
-        java.util.function.BiConsumer<List<Map<String, Object>>, String> filler = (list, key) -> {
-            for (Map<String, Object> item : list) {
-                Object dateObj = item.get("date") != null ? item.get("date") : item.get("DATE");
-                if (dateObj == null)
-                    continue;
-                String date = dateObj.toString();
+        java.util.function.BiConsumer<List<com.lms.www.leadmanagement.dto.TrendProjection>, String> filler = (list, key) -> {
+            for (com.lms.www.leadmanagement.dto.TrendProjection item : list) {
+                if (item.getDate() == null) continue;
+                String date = item.getDate().toString();
                 trendMap.putIfAbsent(date, new HashMap<>());
                 trendMap.get(date).put("date", date);
-                Object val = item.get("count");
-                if (val == null)
-                    val = item.get("COUNT");
-                if (val == null)
-                    val = item.get("amount");
-                if (val == null)
-                    val = item.get("AMOUNT");
+                
+                Object val = item.getCount();
+                if (val == null) val = item.getAmount();
+                
                 trendMap.get(date).put(key, val != null ? val : 0);
             }
         };
@@ -551,6 +545,11 @@ public class DashboardStatsService {
         if (userId != null) {
             securityService.validateAccess(requester, userId);
             userIds = Set.of(userId);
+        }
+        
+        log.info("getMemberPerformanceFiltered userIds={}", userIds);
+        if (userIds == null || userIds.isEmpty()) {
+            return new ArrayList<>();
         }
 
         List<Map<String, Object>> revenueData = paymentRepository.getRevenuePerUser(userIds, start, end);

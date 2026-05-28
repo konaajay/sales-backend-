@@ -38,8 +38,8 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     @Query("SELECT p FROM Payment p WHERE (:status IS NULL OR p.status = :status) " +
             "AND (:leadIds IS NULL OR p.leadId IN :leadIds) " +
-            "AND ((:start IS NULL OR COALESCE(p.dueDate, p.createdAt) >= :start) OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.OVERDUE) " +
-            "AND ((:end IS NULL OR COALESCE(p.dueDate, p.createdAt) <= :end) OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.OVERDUE)")
+            "AND (:start IS NULL OR COALESCE(p.dueDate, p.createdAt) >= :start) " +
+            "AND (:end IS NULL OR COALESCE(p.dueDate, p.createdAt) <= :end)")
     List<Payment> findFiltered(
             @Param("leadIds") java.util.List<Long> leadIds,
             @Param("start") java.time.LocalDateTime start,
@@ -49,8 +49,8 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
     @Query("SELECT p FROM Payment p JOIN Lead l ON p.leadId = l.id LEFT JOIN l.assignedTo a " +
             "WHERE (:status IS NULL OR p.status = :status) " +
             "AND (a.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds)) " +
-            "AND ((:start IS NULL OR COALESCE(p.dueDate, p.createdAt) >= :start) OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.OVERDUE) " +
-            "AND ((:end IS NULL OR COALESCE(p.dueDate, p.createdAt) <= :end) OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING OR p.status = com.lms.www.leadmanagement.entity.Payment$Status.OVERDUE) " +
+            "AND (:start IS NULL OR COALESCE(p.dueDate, p.createdAt) >= :start) " +
+            "AND (:end IS NULL OR COALESCE(p.dueDate, p.createdAt) <= :end) " +
             "ORDER BY p.createdAt DESC")
     List<Payment> findFilteredByUserHierarchy(
             @Param("userIds") java.util.Collection<Long> userIds,
@@ -181,43 +181,31 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     @Query("SELECT COALESCE(SUM(p.amount), 0) FROM Payment p JOIN Lead l ON p.leadId = l.id LEFT JOIN l.assignedTo a WHERE p.status = com.lms.www.leadmanagement.entity.Payment$Status.PENDING AND (a.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds)) AND (:start IS NULL OR p.dueDate >= :start)")
     java.math.BigDecimal getTotalPendingRevenueIn(@Param("userIds") java.util.Collection<Long> userIds, @Param("start") java.time.LocalDateTime start);
-    @Query("SELECT new map(FUNCTION('DATE', p.createdAt) as date, sum(p.amount) as amount) " +
-            "FROM Payment p WHERE UPPER(p.status) IN ('PAID', 'APPROVED', 'SUCCESS', 'PARTIAL', 'COMPLETED') " +
+    @Query("SELECT FUNCTION('DATE', p.createdAt) as date, COALESCE(sum(p.amount), 0) as amount " +
+            "FROM Payment p LEFT JOIN Lead l ON p.leadId = l.id LEFT JOIN l.assignedTo a " +
+            "WHERE UPPER(p.status) IN :statuses " +
+            "AND (:isGlobal = true OR a.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds)) " +
             "AND p.createdAt BETWEEN :start AND :end " +
             "GROUP BY FUNCTION('DATE', p.createdAt) ORDER BY FUNCTION('DATE', p.createdAt)")
-    List<java.util.Map<String, Object>> getGlobalDailyRevenueTrend(
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end);
-
-    @Query("SELECT new map(FUNCTION('DATE', p.createdAt) as date, sum(p.amount) as amount) " +
-            "FROM Payment p JOIN Lead l ON p.leadId = l.id LEFT JOIN l.assignedTo a " +
-            "WHERE UPPER(p.status) IN ('PAID', 'APPROVED', 'SUCCESS', 'PARTIAL', 'COMPLETED') " +
-            "AND (a.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds)) " +
-            "AND p.createdAt BETWEEN :start AND :end " +
-            "GROUP BY FUNCTION('DATE', p.createdAt) ORDER BY FUNCTION('DATE', p.createdAt)")
-    List<java.util.Map<String, Object>> getDailyRevenueTrendByIds(
+    List<com.lms.www.leadmanagement.dto.TrendProjection> getDailyRevenueTrend(
+            @Param("isGlobal") boolean isGlobal,
             @Param("userIds") Collection<Long> userIds,
+            @Param("statuses") Collection<String> statuses,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 
-    @Query("SELECT new map(FUNCTION('DATE', p.createdAt) as date, count(distinct p.leadId) as count) " +
-            "FROM Payment p WHERE UPPER(p.status) IN ('PAID', 'APPROVED', 'SUCCESS', 'COMPLETED') " +
+    @Query("SELECT FUNCTION('DATE', p.createdAt) as date, count(distinct p.leadId) as count " +
+            "FROM Payment p LEFT JOIN Lead l ON p.leadId = l.id LEFT JOIN l.assignedTo a " +
+            "WHERE UPPER(p.status) IN :statuses " +
+            "AND (:isGlobal = true OR a.id IN :userIds OR (l.assignedTo IS NULL AND l.createdBy.id IN :userIds)) " +
             "AND p.createdAt BETWEEN :start AND :end " +
             "GROUP BY FUNCTION('DATE', p.createdAt) ORDER BY FUNCTION('DATE', p.createdAt)")
-    List<java.util.Map<String, Object>> getGlobalDailyConvertedTrend(
-            @Param("start") java.time.LocalDateTime start,
-            @Param("end") java.time.LocalDateTime end);
-
-    @Query("SELECT new map(FUNCTION('DATE', p.createdAt) as date, count(distinct p.leadId) as count) " +
-            "FROM Payment p JOIN Lead l ON p.leadId = l.id " +
-            "WHERE UPPER(p.status) IN ('PAID', 'APPROVED', 'SUCCESS', 'COMPLETED') " +
-            "AND (l.assignedTo.id IN :userIds OR (l.assignedTo.id IS NULL AND l.createdBy.id IN :userIds)) " +
-            "AND p.createdAt BETWEEN :start AND :end " +
-            "GROUP BY FUNCTION('DATE', p.createdAt) ORDER BY FUNCTION('DATE', p.createdAt)")
-    List<java.util.Map<String, Object>> getDailyConvertedTrendByIds(
-            @Param("userIds") java.util.Collection<Long> userIds,
-            @Param("start") java.time.LocalDateTime start,
-            @Param("end") java.time.LocalDateTime end);
+    List<com.lms.www.leadmanagement.dto.TrendProjection> getDailyConvertedTrend(
+            @Param("isGlobal") boolean isGlobal,
+            @Param("userIds") Collection<Long> userIds,
+            @Param("statuses") Collection<String> statuses,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
 
     List<Payment> findByStatusInAndDueDateBetweenAndReminderSentFalse(
             java.util.Collection<Payment.Status> statuses,

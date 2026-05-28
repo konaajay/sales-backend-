@@ -41,7 +41,11 @@ public class PaymentController {
 
     @GetMapping("/api/payments/lead/{leadId}/invoice")
     public ResponseEntity<PaymentDTO> getInvoiceByLeadId(@PathVariable Long leadId) {
-        return ResponseEntity.ok(leadPaymentService.generateInvoice(leadId));
+        try {
+            return ResponseEntity.ok(leadPaymentService.generateInvoice(leadId));
+        } catch (com.lms.www.leadmanagement.exception.ResourceNotFoundException e) {
+            return ResponseEntity.noContent().build();
+        }
     }
 
     @GetMapping("/api/payments/{paymentId}/invoice")

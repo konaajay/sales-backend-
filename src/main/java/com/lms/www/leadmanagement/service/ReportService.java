@@ -73,7 +73,7 @@ public class ReportService {
                 : LocalDate.now().minusDays(30).atStartOfDay();
         LocalDateTime end = filter.getToDate() != null ? filter.getToDate().atTime(LocalTime.MAX) : LocalDateTime.now();
 
-        Map<String, Long> stats;
+        Map<String, Object> stats;
         double totalRevenue = 0;
         long convertedCount = 0;
 
@@ -128,31 +128,23 @@ public class ReportService {
                 : LocalDate.now().minusDays(30).atStartOfDay();
         LocalDateTime end = filter.getToDate() != null ? filter.getToDate().atTime(LocalTime.MAX) : LocalDateTime.now();
 
-        // Fetch daily lead counts (Generated)
-        List<Map<String, Object>> leadTrend;
-        if (userIds != null) {
-            leadTrend = userIds.isEmpty() ? new ArrayList<>() : leadRepository.getDailyLeadTrendByIds(userIds, start, end);
-        } else {
-            leadTrend = leadRepository.getGlobalDailyLeadTrend(start, end);
+        // Guard clause to prevent IN () database syntax error
+        if (!isGlobalAdmin && (userIds == null || userIds.isEmpty())) {
+            return new ArrayList<>();
         }
+
+        List<Long> safeUserIds = (userIds == null || userIds.isEmpty()) ? List.of(-1L) : userIds;
+
+        // Fetch daily lead counts (Generated)
+        List<com.lms.www.leadmanagement.dto.TrendProjection> leadTrend = leadRepository.getDailyLeadTrend(isGlobalAdmin, safeUserIds, start, end);
 
         // Fetch daily lost counts
-        List<Map<String, Object>> lostTrend;
         List<String> lostStatuses = List.of("LOST", "NOT_INTERESTED", "REJECTED");
-        if (userIds != null) {
-            lostTrend = userIds.isEmpty() ? new ArrayList<>() : leadRepository.getDailyLostTrendByIds(userIds, lostStatuses, start, end);
-        } else {
-            lostTrend = leadRepository.getGlobalDailyLostTrend(lostStatuses, start, end);
-        }
+        List<com.lms.www.leadmanagement.dto.TrendProjection> lostTrend = leadRepository.getDailyLostTrend(isGlobalAdmin, safeUserIds, lostStatuses, start, end);
 
         // Fetch daily converted counts
-        List<Map<String, Object>> convertedTrend;
         List<String> successStatuses = List.of("CONVERTED", "PAID", "EMI", "SUCCESS");
-        if (userIds != null) {
-            convertedTrend = userIds.isEmpty() ? new ArrayList<>() : leadRepository.getDailyConvertedTrendByIds(userIds, successStatuses, start, end);
-        } else {
-            convertedTrend = leadRepository.getGlobalDailyConvertedTrend(successStatuses, start, end);
-        }
+        List<com.lms.www.leadmanagement.dto.TrendProjection> convertedTrend = leadRepository.getDailyConvertedTrend(isGlobalAdmin, safeUserIds, successStatuses, start, end);
 
         // Fetch daily revenue (Amount)
         List<com.lms.www.leadmanagement.entity.Payment> payments;
@@ -164,59 +156,26 @@ public class ReportService {
         }
 
         Map<LocalDate, Long> leadsByDate = new HashMap<>();
-        for (Map<String, Object> row : leadTrend) {
-            Object dateObj = row.get("date");
-            LocalDate date = null;
-            if (dateObj instanceof java.sql.Date)
-                date = ((java.sql.Date) dateObj).toLocalDate();
-            else if (dateObj instanceof java.time.LocalDate)
-                date = (java.time.LocalDate) dateObj;
-
-            if (date != null) {
-                Object countObj = row.get("count");
-                long count = 0;
-                if (countObj instanceof Number) {
-                    count = ((Number) countObj).longValue();
-                }
-                leadsByDate.put(date, count);
+        for (com.lms.www.leadmanagement.dto.TrendProjection row : leadTrend) {
+            if (row.getDate() != null) {
+                LocalDate date = row.getDate() instanceof java.sql.Date ? ((java.sql.Date) row.getDate()).toLocalDate() : new java.sql.Date(row.getDate().getTime()).toLocalDate();
+                leadsByDate.put(date, row.getCount() != null ? row.getCount() : 0L);
             }
         }
 
         Map<LocalDate, Long> lostByDate = new HashMap<>();
-        for (Map<String, Object> row : lostTrend) {
-            Object dateObj = row.get("date");
-            LocalDate date = null;
-            if (dateObj instanceof java.sql.Date)
-                date = ((java.sql.Date) dateObj).toLocalDate();
-            else if (dateObj instanceof java.time.LocalDate)
-                date = (java.time.LocalDate) dateObj;
-
-            if (date != null) {
-                Object countObj = row.get("count");
-                long count = 0;
-                if (countObj instanceof Number) {
-                    count = ((Number) countObj).longValue();
-                }
-                lostByDate.put(date, count);
+        for (com.lms.www.leadmanagement.dto.TrendProjection row : lostTrend) {
+            if (row.getDate() != null) {
+                LocalDate date = row.getDate() instanceof java.sql.Date ? ((java.sql.Date) row.getDate()).toLocalDate() : new java.sql.Date(row.getDate().getTime()).toLocalDate();
+                lostByDate.put(date, row.getCount() != null ? row.getCount() : 0L);
             }
         }
 
         Map<LocalDate, Long> convertedByDate = new HashMap<>();
-        for (Map<String, Object> row : convertedTrend) {
-            Object dateObj = row.get("date");
-            LocalDate date = null;
-            if (dateObj instanceof java.sql.Date)
-                date = ((java.sql.Date) dateObj).toLocalDate();
-            else if (dateObj instanceof java.time.LocalDate)
-                date = (java.time.LocalDate) dateObj;
-
-            if (date != null) {
-                Object countObj = row.get("count");
-                long count = 0;
-                if (countObj instanceof Number) {
-                    count = ((Number) countObj).longValue();
-                }
-                convertedByDate.put(date, count);
+        for (com.lms.www.leadmanagement.dto.TrendProjection row : convertedTrend) {
+            if (row.getDate() != null) {
+                LocalDate date = row.getDate() instanceof java.sql.Date ? ((java.sql.Date) row.getDate()).toLocalDate() : new java.sql.Date(row.getDate().getTime()).toLocalDate();
+                convertedByDate.put(date, row.getCount() != null ? row.getCount() : 0L);
             }
         }
 

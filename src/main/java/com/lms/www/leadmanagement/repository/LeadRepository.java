@@ -149,7 +149,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
             "FROM Lead l LEFT JOIN l.assignedTo a " +
             "WHERE (a.id IN :userIds OR (a IS NULL AND l.createdBy.id IN :userIds)) " +
             "AND l.createdAt BETWEEN :start AND :end")
-    Map<String, Long> getSummaryStats(
+    Map<String, Object> getSummaryStats(
             @Param("userIds") Collection<Long> userIds,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
@@ -167,7 +167,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
             "sum(case when UPPER(l.status) IN ('LOST', 'NOT_INTERESTED') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as lostCount) " +
             "FROM Lead l " +
             "WHERE l.createdAt BETWEEN :start AND :end")
-    Map<String, Long> getGlobalSummaryStats(
+    Map<String, Object> getGlobalSummaryStats(
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 
@@ -184,7 +184,7 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
             "sum(case when UPPER(l.status) IN ('LOST', 'NOT_INTERESTED') AND l.updatedAt BETWEEN :start AND :end then 1 else 0 end) as lostCount) " +
             "FROM Lead l " +
             "WHERE l.assignedTo.id = :userId AND l.createdAt BETWEEN :start AND :end")
-    Map<String, Long> getUserSpecificSummaryStats(
+    Map<String, Object> getUserSpecificSummaryStats(
             @Param("userId") Long userId,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
@@ -207,51 +207,31 @@ public interface LeadRepository extends JpaRepository<Lead, Long> {
     @Query("SELECT COUNT(l) FROM Lead l WHERE l.status IN ('INTERESTED', 'UNDER_REVIEW') AND l.followUpDate <= :now")
     long countGlobalHighPriorityLeads(@Param("now") LocalDateTime now);
 
-    @Query("SELECT new map(FUNCTION('DATE', l.createdAt) as date, count(l) as count) " +
-            "FROM Lead l WHERE (l.assignedTo.id IN :userIds OR l.createdBy.id IN :userIds) AND l.createdAt BETWEEN :start AND :end " +
+    @Query("SELECT FUNCTION('DATE', l.createdAt) as date, count(l) as count " +
+            "FROM Lead l WHERE (:isGlobal = true OR l.assignedTo.id IN :userIds OR l.createdBy.id IN :userIds) AND l.createdAt BETWEEN :start AND :end " +
             "GROUP BY FUNCTION('DATE', l.createdAt) ORDER BY FUNCTION('DATE', l.createdAt)")
-    List<Map<String, Object>> getDailyLeadTrendByIds(
+    List<com.lms.www.leadmanagement.dto.TrendProjection> getDailyLeadTrend(
+            @Param("isGlobal") boolean isGlobal,
             @Param("userIds") Collection<Long> userIds,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 
-    @Query("SELECT new map(FUNCTION('DATE', l.createdAt) as date, count(l) as count) " +
-            "FROM Lead l WHERE l.createdAt BETWEEN :start AND :end " +
-            "GROUP BY FUNCTION('DATE', l.createdAt) ORDER BY FUNCTION('DATE', l.createdAt)")
-    List<Map<String, Object>> getGlobalDailyLeadTrend(
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end);
-
-    @Query("SELECT new map(FUNCTION('DATE', l.updatedAt) as date, count(l) as count) " +
-            "FROM Lead l WHERE (l.assignedTo.id IN :userIds OR l.createdBy.id IN :userIds) AND l.status IN :successStatuses AND l.updatedAt BETWEEN :start AND :end " +
+    @Query("SELECT FUNCTION('DATE', l.updatedAt) as date, count(l) as count " +
+            "FROM Lead l WHERE (:isGlobal = true OR l.assignedTo.id IN :userIds OR l.createdBy.id IN :userIds) AND l.status IN :successStatuses AND l.updatedAt BETWEEN :start AND :end " +
             "GROUP BY FUNCTION('DATE', l.updatedAt) ORDER BY FUNCTION('DATE', l.updatedAt)")
-    List<Map<String, Object>> getDailyConvertedTrendByIds(
+    List<com.lms.www.leadmanagement.dto.TrendProjection> getDailyConvertedTrend(
+            @Param("isGlobal") boolean isGlobal,
             @Param("userIds") Collection<Long> userIds,
             @Param("successStatuses") Collection<String> successStatuses,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
 
-    @Query("SELECT new map(FUNCTION('DATE', l.updatedAt) as date, count(l) as count) " +
-            "FROM Lead l WHERE l.status IN :successStatuses AND l.updatedAt BETWEEN :start AND :end " +
+    @Query("SELECT FUNCTION('DATE', l.updatedAt) as date, count(l) as count " +
+            "FROM Lead l WHERE (:isGlobal = true OR l.assignedTo.id IN :userIds OR l.createdBy.id IN :userIds) AND l.status IN :lostStatuses AND l.updatedAt BETWEEN :start AND :end " +
             "GROUP BY FUNCTION('DATE', l.updatedAt) ORDER BY FUNCTION('DATE', l.updatedAt)")
-    List<Map<String, Object>> getGlobalDailyConvertedTrend(
-            @Param("successStatuses") Collection<String> successStatuses,
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end);
-
-    @Query("SELECT new map(FUNCTION('DATE', l.updatedAt) as date, count(l) as count) " +
-            "FROM Lead l WHERE (l.assignedTo.id IN :userIds OR l.createdBy.id IN :userIds) AND l.status IN :lostStatuses AND l.updatedAt BETWEEN :start AND :end " +
-            "GROUP BY FUNCTION('DATE', l.updatedAt) ORDER BY FUNCTION('DATE', l.updatedAt)")
-    List<Map<String, Object>> getDailyLostTrendByIds(
+    List<com.lms.www.leadmanagement.dto.TrendProjection> getDailyLostTrend(
+            @Param("isGlobal") boolean isGlobal,
             @Param("userIds") Collection<Long> userIds,
-            @Param("lostStatuses") Collection<String> lostStatuses,
-            @Param("start") LocalDateTime start,
-            @Param("end") LocalDateTime end);
-
-    @Query("SELECT new map(FUNCTION('DATE', l.updatedAt) as date, count(l) as count) " +
-            "FROM Lead l WHERE l.status IN :lostStatuses AND l.updatedAt BETWEEN :start AND :end " +
-            "GROUP BY FUNCTION('DATE', l.updatedAt) ORDER BY FUNCTION('DATE', l.updatedAt)")
-    List<Map<String, Object>> getGlobalDailyLostTrend(
             @Param("lostStatuses") Collection<String> lostStatuses,
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end);
