@@ -47,4 +47,27 @@ public class CertificateScheduler {
             }
         }
     }
+
+    /**
+     * Scheduled job to rescue certificates that are stuck in PROCESSING state.
+     * This happens if the server crashes or an async thread dies unexpectedly.
+     * Runs every 10 minutes.
+     */
+    @Scheduled(fixedRate = 600000)
+    public void sweepStuckCertificates() {
+        java.time.LocalDateTime tenMinsAgo = java.time.LocalDateTime.now().minusMinutes(10);
+        List<Certificate> stuckRecords = certificateRepository.findByStatusAndCreatedAtBefore(CertificateStatus.PROCESSING, tenMinsAgo);
+
+        if (stuckRecords.isEmpty()) {
+            return;
+        }
+
+        log.warn("Found {} certificates stuck in PROCESSING status for >10 mins. Moving to RETRY.", stuckRecords.size());
+
+        for (Certificate cert : stuckRecords) {
+            cert.setStatus(CertificateStatus.RETRY);
+            cert.setErrorMessage("Stuck in PROCESSING state. Likely due to network timeout or unexpected server restart.");
+            certificateRepository.save(cert);
+        }
+    }
 }

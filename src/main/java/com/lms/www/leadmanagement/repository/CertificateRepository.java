@@ -21,4 +21,5 @@ public interface CertificateRepository extends JpaRepository<Certificate, Long> 
     Long countByStatus(CertificateStatus status);
     
     List<Certificate> findByStatusAndRetryCountLessThan(CertificateStatus status, Integer maxRetries);
+    List<Certificate> findByStatusAndCreatedAtBefore(CertificateStatus status, java.time.LocalDateTime time);
 }
