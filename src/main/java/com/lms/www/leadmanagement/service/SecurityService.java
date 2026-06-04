@@ -113,7 +113,7 @@ public class SecurityService {
 
     public boolean isAdmin(User user) {
         String role = getRole(user);
-        return role.equals("ADMIN") || role.equals("SUPERADMIN") || "admin@lms.com".equalsIgnoreCase(user.getEmail());
+        return role.equals("ADMIN") || role.equals("SUPERADMIN") || "siddhartha.m@gyantrixacademy.com".equalsIgnoreCase(user.getEmail());
     }
 
     public boolean isManager(User user) {

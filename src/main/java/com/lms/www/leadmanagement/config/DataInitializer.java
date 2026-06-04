@@ -89,7 +89,7 @@ public class DataInitializer implements CommandLineRunner {
             User admin = User.builder()
                     .name("System Admin")
                     .email(adminEmail)
-                    .mobile("+91 00000 00000")
+                    .mobile("+91 92475 51329")
                     .password(passwordEncoder.encode(adminPassword))
                     .role(adminRole)
                     .reportScope(ReportScope.ALL)
