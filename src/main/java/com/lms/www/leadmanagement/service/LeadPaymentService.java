@@ -42,7 +42,7 @@ public class LeadPaymentService {
     @Value("${cashfree.webhook.url}")
     private String webhookUrl;
 
-    @Value("${app.frontend-url:http://52.87.168.111}")
+    @Value("${app.frontend-url:https://52.87.168.111}")
     private String frontendUrl;
 
     // --- CONSTANTS ---

@@ -113,9 +113,11 @@ public class WebSecurityConfig {
         config.setAllowedOriginPatterns(List.of(
                 frontendUrl,
                 "http://localhost:3000",
+                "https://localhost:3000",
                 "http://192.168.*:*",
                 "http://100.*:*",
-                "http://52.*:*"
+                "http://52.*:*",
+                "https://52.*:*"
         ));
 
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
