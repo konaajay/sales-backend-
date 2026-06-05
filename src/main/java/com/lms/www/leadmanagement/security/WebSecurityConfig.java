@@ -114,9 +114,8 @@ public class WebSecurityConfig {
                 frontendUrl,
                 "http://localhost:3000",
                 "https://localhost:3000",
+                "https://sales-frontend.duckdns.org",
                 "http://192.168.*:*",
-                "http://100.*:*",
-                "http://52.*:*",
                 "https://52.*:*"
         ));
 

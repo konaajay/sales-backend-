@@ -22,7 +22,7 @@ public class MailService {
     @Value("${spring.mail.username}")
     private String fromEmail;
 
-    @Value("${app.frontend-url:https://52.87.168.111}")
+    @Value("${app.frontend-url:https://sales-frontend.duckdns.org}")
     private String frontendUrl;
 
     public void sendEmail(String to, String subject, String body) {
