@@ -70,6 +70,7 @@ public class WebSecurityConfig {
                         .permitAll()
                         .requestMatchers("/api/public/**", "/api/payments/**", "/uploads/**", "/api/form/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/webinars/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/colleges/active").permitAll()
 
                         // Restrict payment endpoints properly
                         .requestMatchers(HttpMethod.POST, "/api/payments/create").authenticated()
