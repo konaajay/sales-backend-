@@ -13,13 +13,13 @@ import java.sql.SQLException;
 @Configuration
 public class DatabaseConfig {
 
-    @Value("${spring.datasource.url}")
+    @Value("${spring.datasource.url:jdbc:mysql://localhost:3306/lms_db?useSSL=false&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true}")
     private String datasourceUrl;
 
-    @Value("${spring.datasource.username}")
+    @Value("${spring.datasource.username:root}")
     private String username;
 
-    @Value("${spring.datasource.password}")
+    @Value("${spring.datasource.password:root}")
     private String password;
 
     @Value("${spring.datasource.driver-class-name:com.mysql.cj.jdbc.Driver}")
