@@ -840,7 +840,7 @@ public class LeadPaymentService {
                         .build())
                 .order_meta(com.lms.www.leadmanagement.dto.payment.CashfreeOrderRequest.OrderMeta.builder()
                         .return_url(frontendUrl + "/payment-status/" + orderId)
-                        .notify_url(webhookUrl != null && webhookUrl.startsWith("https://") ? webhookUrl : null)
+                        .notify_url(webhookUrl != null && webhookUrl.startsWith("http") ? webhookUrl : null)
                         .build())
                 .build();
     }
