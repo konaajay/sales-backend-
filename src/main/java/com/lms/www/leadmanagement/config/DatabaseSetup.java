@@ -16,24 +16,6 @@ public class DatabaseSetup implements CommandLineRunner {
     @Override
     public void run(String... args) {
         log.info("Starting automated database schema check...");
-
-        // ── Colleges table ────────────────────────────────────────────────────
-        try {
-            jdbcTemplate.execute(
-                "CREATE TABLE IF NOT EXISTS colleges (" +
-                "  id BIGINT PRIMARY KEY AUTO_INCREMENT," +
-                "  college_name VARCHAR(255) NOT NULL," +
-                "  status BOOLEAN NOT NULL DEFAULT TRUE," +
-                "  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
-                "  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP" +
-                ")"
-            );
-            log.info("Database schema: 'colleges' table verified/created.");
-        } catch (Exception e) {
-            log.warn("Could not create 'colleges' table: {}", e.getMessage());
-        }
-
-        // ── Existing patches ──────────────────────────────────────────────────
         try {
             // Force MySQL to update the column to TEXT
             jdbcTemplate.execute("ALTER TABLE certificate MODIFY error_message TEXT");
